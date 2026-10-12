@@ -2,11 +2,21 @@
 
 ### 0.8.8
 
-- **任务模板分类**：模板获得自定义类别（1..30 字符），「+ 新建任务 ▼」菜单与「管理模板」弹窗按类别分组展示，未分类模板归入「其他」组并固定排在最后。管理弹窗中自建模板可行内编辑类别（输入框联想已有类别，回车或「改名」按钮一并保存改名与类别），内置模板自带类别（开发 / 运维）并跟随界面语言显示。类别随模板保存在模板文件中，既有数据无需迁移。
+- **任务模板分类**：模板获得自定义类别（1..30 字符），「+ 新建任务 ▼」菜单与「管理模板」弹窗按类别分组展示，未分类模板归入「其他」组并固定排在最后。管理弹窗中自建模板可行内编辑类别——建议下拉始终列出全部分类、不随输入过滤，输入框靠近弹窗底部时自动向上弹出；回车或「改名」按钮一并保存改名与类别。内置模板自带类别（开发 / 运维）并跟随界面语言显示。类别随模板保存在模板文件中，既有数据无需迁移。
+- **任务表单「存为模板」**：新建/编辑任务表单底栏新增「⌗ 存为模板」——把当前表单内容（标题/描述/Prompt/紧急度/执行配置/模型与思考强度/隔离/preset/执行权限/验收清单）一键存为模板；表单保持打开，可继续建卡；标题为空时按钮置灰。
+- **SVN 工作区扫描短路（[PR #46](https://github.com/cloader/dsh-taskboard/pull/46)）**：项目探测发现根目录存在 `.svn` 时直接判定为非 Git 工作区并跳过嵌套扫描，修复大型 SVN 代码库把工作区探测拖到 60 秒以上、`/workspaces` 频繁 10 秒超时的问题（实测无缓存全量探测降至毫秒级）。感谢 [@jw5555555555](https://github.com/jw5555555555) 的贡献。
+- **双击卡片直达会话 + 点击空白收起详情（[PR #46](https://github.com/cloader/dsh-taskboard/pull/46)）**：双击任务卡片直接打开对应执行会话并自动收起看板（单击选中卡片，250ms 防抖，单/双击互不误触）；详情面板打开时，点击面板外任意看板空白区域自动收起。卡片底部原「🤖 会话ID ↗」按钮移除（详情页内跳转按钮保留）。
+- **已完成列折叠与显示上限（[PR #46](https://github.com/cloader/dsh-taskboard/pull/46)）**：看板设置可配置已完成列的显示上限（默认 50，10–500，搜索自动豁免截断）；列头可整体折叠（状态持久化、仍可拖放投放），收起时后端按需省略已完成任务并回传总数；已完成列改为最新在前、按工作区分组排序，缓解历史卡片过多时的渲染卡顿。
+- **外部会话占位标题自动回填（[PR #46](https://github.com/cloader/dsh-taskboard/pull/46)）**：自动纳入的会话卡先以「会话 xxxxxxxx」占位，拿到真实标题后自动更名（仅限 agent 自建的卡片）；另声明兼容 DSH 0.2.0-rc.2。
 
 **English:**
 
-- **Template categories**: templates gain a user-defined category (1..30 characters); the "+ New Task ▼" menu and the manager dialog group templates by category, with uncategorized templates collected in the "Others" bucket that always sorts last. Custom templates edit their category inline in the manager (an input with datalist suggestions; Enter or the rename button saves name and category together), while built-ins ship factory categories (Development / Operations) resolved per GUI language. Categories persist in the template file — no migration needed.
+- **Template categories**: templates gain a user-defined category (1..30 characters); the "+ New Task ▼" menu and the manager dialog group templates by category, with uncategorized templates collected in the "Others" bucket that always sorts last. Custom templates edit their category inline in the manager — the suggestion dropdown always lists every category without filtering as you type, and flips above the input near the modal bottom; Enter or the rename button saves name and category together. Built-ins ship factory categories (Development / Operations) resolved per GUI language. Categories persist in the template file — no migration needed.
+- **Save as template from the task form**: the create/edit task form footer gains a "⌗ Save as template" button that persists the current form contents (title / description / prompt / urgency / execution / model & reasoning effort / isolation / preset / permission / checklist) as a template. The form stays open so the same contents can still be submitted as a task; the button is disabled until a title is entered.
+- **SVN workspace scan short-circuit ([PR #46](https://github.com/cloader/dsh-taskboard/pull/46))**: project detection now treats a root `.svn` directory as a non-Git workspace and skips nested scanning entirely, fixing multi-second `/workspaces` timeouts caused by deep-scanning large SVN trees (uncached detection drops from 60s+ to milliseconds). Thanks to [@jw5555555555](https://github.com/jw5555555555) for the contribution.
+- **Double-click a card to open its session + click outside to dismiss details ([PR #46](https://github.com/cloader/dsh-taskboard/pull/46))**: double-clicking a task card opens the associated execution session directly and collapses the board (single-click still selects the card; a 250ms debounce keeps the two apart). Clicking any blank board area outside the detail panel dismisses it. The card-level "🤖 session ↗" button is removed (the detail-pane jump button remains).
+- **Completed column folding and display limit ([PR #46](https://github.com/cloader/dsh-taskboard/pull/46))**: Board Settings can cap how many completed cards a column renders (default 50, 10–500; search exempts the cap). The done column collapses into a compact strip (state persisted, still a drop target); while collapsed the host omits done tasks from `/state` and reports the total. Completed tasks sort newest-first, grouped per workspace, easing render lag on large histories.
+- **External session placeholder titles reconcile ([PR #46](https://github.com/cloader/dsh-taskboard/pull/46))**: auto-synced session cards start as "session xxxxxxxx" placeholders and rename automatically once the real title is known (agent-created cards only); also declares compatibility with DSH 0.2.0-rc.2.
 
 ### 0.8.7
 
