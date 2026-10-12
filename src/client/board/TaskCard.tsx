@@ -11,7 +11,7 @@
  *
  * @module dsh-taskboard/client/board/TaskCard
  */
-import { useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { TaskRecord } from '../../shared/protocol.ts'
 import { fmtTime, isStaleClaim } from './format.ts'
@@ -45,6 +45,16 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
   const reviewing = task.status === 'in_review' && task.trashedAt === undefined
   const sessionExecution = [...task.executions].reverse().find(ex => ex.sessionId !== undefined)
   const targetSessionId = running?.sessionId ?? sessionExecution?.sessionId ?? (task.claimedBy?.startsWith('session-') ? task.claimedBy : undefined)
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current !== null) {
+        clearTimeout(clickTimerRef.current)
+        clickTimerRef.current = null
+      }
+    }
+  }, [])
 
   /** Submit the quick-reject: one atomic route (move + optional note). */
   const submitReject = (): void => {
@@ -54,8 +64,33 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
     })
   }
 
-  /** Double-click opens the associated session conversation directly. */
+  /** Single-click handler: debounce when a target session exists so double-click won't open details if closed. */
+  const handleClick = (e: MouseEvent): void => {
+    if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, textarea')) return
+
+    // If no target session, or this task's detail is ALREADY open, select immediately
+    if (targetSessionId === undefined || controller.getSnapshot().selectedId === task.id) {
+      controller.select(task.id)
+      return
+    }
+
+    // Otherwise, debounce single click so double-click can jump to session WITHOUT opening details
+    if (clickTimerRef.current !== null) {
+      clearTimeout(clickTimerRef.current)
+    }
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null
+      controller.select(task.id)
+    }, 250)
+  }
+
+  /** Double-click opens the associated session conversation directly without opening details. */
   const handleDoubleClick = (e: MouseEvent): void => {
+    if (clickTimerRef.current !== null) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+
     // Only the card surface itself, ignore nested buttons/inputs (like quick-reject controls)
     if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, textarea')) return
     if (targetSessionId !== undefined) {
@@ -98,7 +133,7 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
         e.currentTarget.dataset.dragging = 'true'
       }}
       onDragEnd={(e) => { delete e.currentTarget.dataset.dragging }}
-      onClick={() => controller.select(task.id)}
+      onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onKeyDown={(e) => {
         // Only the card itself (not the nested quick-action controls).

@@ -2115,12 +2115,15 @@ describe('client half', () => {
     const card = host.querySelector<HTMLElement>('.dsh-atb-card')!
     expect(card).not.toBeNull()
 
-    // Trigger double-click event on the card surface
+    // Trigger real browser sequence: click followed immediately by dblclick
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
     card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
-    await new Promise(r => setTimeout(r, 20))
+    await new Promise(r => setTimeout(r, 300))
 
     expect(opened).toEqual(['session-taskboard-t-dbl-1234'])
     expect(controller.getSnapshot().boardOpen).toBe(false)
+    // Detail was NOT open previously, and double-click must NOT open it
+    expect(controller.getSnapshot().selectedId).toBeUndefined()
 
     root.unmount()
     host.remove()
