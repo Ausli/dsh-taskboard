@@ -945,6 +945,8 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   font-size: 11.5px; color: inherit; border-radius: 6px; white-space: nowrap;
 }
 .dsh-atb-tplm-catopt:hover { background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,.1)); }
+/* Flipped variant: open upward when the input sits near the modal bottom. */
+.dsh-atb-tplm-catpop-up { top: auto; bottom: calc(100% + 3px); }
 .dsh-atb-tplm-catstatic {
   flex: 0 0 110px; max-width: 110px; font-size: 11px; color: var(--dsw-alias-label-tertiary, gray);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

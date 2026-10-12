@@ -1394,10 +1394,21 @@ describe('client half', () => {
     catInput.dispatchEvent(new Event('input', { bubbles: true }))
     await new Promise(r => setTimeout(r, 10))
     expect(catOptions()).toEqual(['服务'])
-    // Picking a suggestion fills the input verbatim.
+    // Picking a suggestion fills the input verbatim (and closes the list).
     ;(host.querySelector<HTMLElement>('.dsh-atb-tplm-catopt')!).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
     await new Promise(r => setTimeout(r, 10))
     expect(catInput.value).toBe('服务')
+
+    // Refocus with a mocked geometry where the modal body has no room below
+    // the input: the dropdown flips above (dsh-atb-tplm-catpop-up).
+    const catWrap = catInput.closest<HTMLElement>('.dsh-atb-tplm-catwrap')!
+    const modalBody = host.querySelector<HTMLElement>('.dsh-atb-modal-body')!
+    catWrap.getBoundingClientRect = (): DOMRect => ({ top: 660, bottom: 700, left: 0, right: 110, width: 110, height: 40, x: 0, y: 660, toJSON: () => ({}) })
+    modalBody.getBoundingClientRect = (): DOMRect => ({ top: 100, bottom: 720, left: 0, right: 600, width: 600, height: 620, x: 0, y: 100, toJSON: () => ({}) })
+    catInput.dispatchEvent(new Event('focusin', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 10))
+    expect(host.querySelector('.dsh-atb-tplm-catpop-up')).not.toBeNull()
+    expect(catOptions()).toEqual(['服务'])
 
     // Keep editing after the pick; the save reaches the upsert with the label.
     setter?.call(catInput, '服务B')

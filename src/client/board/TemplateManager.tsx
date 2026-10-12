@@ -7,7 +7,7 @@
  *
  * @module dsh-taskboard/client/board/TemplateManager
  */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { TaskTemplate } from '../../shared/api.ts'
 import type { Urgency } from '../../shared/protocol.ts'
@@ -17,11 +17,15 @@ import { useT } from '../i18n/runtime.ts'
 import { localizeBuiltinCategory, localizeBuiltinName, localizeBuiltinTask } from '../i18n/templates.ts'
 import { categoryLabel, groupTemplatesByCategory, templateCategoryOf, templateCategoryOptions } from '../template-categories.ts'
 
+/** Space (px) the dropdown needs below the input before flipping upward. */
+const CATEGORY_POP_MIN_SPACE = 150
+
 /**
  * Free-text category input with a suggestion dropdown that always lists every
  * existing category — typing never filters the list; picking an option fills
  * the input verbatim (the native datalist's as-you-type filtering is exactly
- * what this replaces).
+ * what this replaces). The dropdown flips above the input when the modal body
+ * leaves no room below (last row).
  */
 function CategorySuggest({ value, options, placeholder, ariaLabel, onPick, onEnter, onChange }: {
   value: string
@@ -33,8 +37,24 @@ function CategorySuggest({ value, options, placeholder, ariaLabel, onPick, onEnt
   onChange: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [up, setUp] = useState(false)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+
+  /** Open the list, flipping it above the input when the modal body has no room below. */
+  const openList = (): void => {
+    const wrap = wrapRef.current
+    if (wrap !== null) {
+      const bodyRect = wrap.closest('.dsh-atb-modal-body')?.getBoundingClientRect()
+      const wrapRect = wrap.getBoundingClientRect()
+      const below = (bodyRect?.bottom ?? window.innerHeight) - wrapRect.bottom
+      const above = wrapRect.top - (bodyRect?.top ?? 0)
+      setUp(below < CATEGORY_POP_MIN_SPACE && above > below)
+    }
+    setOpen(true)
+  }
+
   return (
-    <div className="dsh-atb-tplm-catwrap">
+    <div ref={wrapRef} className="dsh-atb-tplm-catwrap">
       <input
         className="dsh-atb-tplm-category"
         value={value}
@@ -42,7 +62,7 @@ function CategorySuggest({ value, options, placeholder, ariaLabel, onPick, onEnt
         spellCheck={false}
         placeholder={placeholder}
         aria-label={ariaLabel}
-        onFocus={() => setOpen(true)}
+        onFocus={openList}
         onBlur={() => setOpen(false)}
         onChange={e => onChange(e.target.value)}
         onKeyDown={e => {
@@ -51,7 +71,7 @@ function CategorySuggest({ value, options, placeholder, ariaLabel, onPick, onEnt
         }}
       />
       {open && options.length > 0 && (
-        <div className="dsh-atb-tplm-catpop">
+        <div className={up ? 'dsh-atb-tplm-catpop dsh-atb-tplm-catpop-up' : 'dsh-atb-tplm-catpop'}>
           {options.map(option => (
             <button
               key={option}
