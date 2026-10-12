@@ -4,7 +4,7 @@
  *
  * @module dsh-taskboard/client/board/TaskBoard
  */
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BoardController, ControllerState } from '../controller.ts'
 import type { TaskRecord, TaskStatus, Urgency } from '../../shared/protocol.ts'
 import { MAIN_STATUSES, canTransition, completedDisplayLimitOf } from '../../shared/protocol.ts'
@@ -58,6 +58,36 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   }, [])
   const live = filterTasks(state, state.ledger.tasks.filter(t => t.trashedAt === undefined))
   const selected = state.selectedId === undefined ? undefined : state.ledger.tasks.find(t => t.id === state.selectedId)
+  const detailPanelRef = useRef<HTMLDivElement>(null)
+
+  // Click-outside-to-dismiss: clicking outside the detail panel deselects the task.
+  useEffect(() => {
+    if (selected === undefined) return
+
+    const onPointerDown = (e: PointerEvent | MouseEvent): void => {
+      const panel = detailPanelRef.current
+      if (panel === null) return
+
+      const target = e.target as HTMLElement | null
+      if (target === null) return
+
+      // Inside detail panel: never dismiss
+      if (panel.contains(target)) return
+
+      // Clicking another task card: let card's onClick handle selection switch directly
+      if (target.closest('.dsh-atb-card')) return
+
+      // Modals, dropdown menus, context menus: keep existing modal behaviors untouched
+      if (target.closest('.dsh-atb-modal, .dsh-atb-modal-backdrop, .dsh-atb-newmenu-backdrop, .dsh-atb-newmenu, .dsh-atb-dropdown, .dsh-atb-btn-menu')) return
+
+      controller.select(undefined)
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [selected, controller])
   const { alert: showAlert, el: alertEl } = useAlert()
   // + 新建任务 ▼ dropdown (0.4.0): blank / templates / manage / import.
   const [newMenuOpen, setNewMenuOpen] = useState(false)
@@ -300,7 +330,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         )}
 
       {selected !== undefined && (
-        <div className="dsh-atb-detailpanel">
+        <div ref={detailPanelRef} className="dsh-atb-detailpanel">
           {/* key: remount per task — without it, confirm states and comment
               drafts leak across task switches (review P0). */}
           <TaskDetail key={selected.id} task={selected} controller={controller} now={now} />

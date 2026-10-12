@@ -2531,4 +2531,78 @@ describe('client half', () => {
     controller.dispose()
     localStorage.clear()
   })
+
+  it('TaskBoard: clicking outside the detail panel dismisses it', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskBoard } = await import('../src/client/board/TaskBoard.tsx')
+
+    const task1 = {
+      id: 't-1', title: 'Task 1', description: 'desc 1', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'todo' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const task2 = {
+      id: 't-2', title: 'Task 2', description: 'desc 2', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'todo' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [task1, task2] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+    }
+    const controller = new BoardController(client as never)
+    controller.start()
+    controller.openBoard()
+    await new Promise(r => setTimeout(r, 10))
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    root.render(React.createElement(TaskBoard, { controller }))
+    await new Promise(r => setTimeout(r, 10))
+
+    // 1. Initially no task selected
+    expect(host.querySelector('.dsh-atb-detailpanel')).toBeNull()
+
+    // 2. Select task 1 -> detail panel opens
+    controller.select('t-1')
+    await new Promise(r => setTimeout(r, 10))
+    const detailPanel = host.querySelector<HTMLElement>('.dsh-atb-detailpanel')!
+    expect(detailPanel).not.toBeNull()
+    expect(controller.getSnapshot().selectedId).toBe('t-1')
+
+    // 3. Pointerdown INSIDE the detail panel -> stays open
+    detailPanel.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 10))
+    expect(controller.getSnapshot().selectedId).toBe('t-1')
+
+    // 4. Pointerdown on another task card -> card click switches selection
+    const cards = host.querySelectorAll<HTMLElement>('.dsh-atb-card')
+    expect(cards.length).toBeGreaterThanOrEqual(2)
+    cards[1]!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }))
+    cards[1]!.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(controller.getSnapshot().selectedId).toBe('t-2')
+
+    // 5. Pointerdown OUTSIDE (e.g. on toolbar) -> closes the detail panel
+    const toolbar = host.querySelector<HTMLElement>('.dsh-atb-toolbar')!
+    toolbar.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 10))
+    expect(controller.getSnapshot().selectedId).toBeUndefined()
+    expect(host.querySelector('.dsh-atb-detailpanel')).toBeNull()
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
 })
