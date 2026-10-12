@@ -138,6 +138,11 @@ export const MIN_DISPATCH_INTERVAL_MS = 0
 export const DEFAULT_DISPATCH_INTERVAL_MS = 1_000
 export const MAX_DISPATCH_INTERVAL_MS = 60_000
 
+/** Factory default and safe UI/API range for completed tasks displayed on the board. */
+export const DEFAULT_COMPLETED_DISPLAY_LIMIT = 50
+export const MIN_COMPLETED_DISPLAY_LIMIT = 10
+export const MAX_COMPLETED_DISPLAY_LIMIT = 500
+
 /** Validate an isolation value. */
 export function asIsolation(raw: string): IsolationMode {
   if (raw !== 'worktree' && raw !== 'none') {
@@ -198,6 +203,8 @@ export type BoardSettings = {
   queueMaxAgeMinutes?: number
   /** Minimum delay between scheduled session starts; zero explicitly disables throttling. */
   dispatchIntervalMs?: number
+  /** Maximum number of completed (done) tasks displayed on the board (default: 50). */
+  completedDisplayLimit?: number
 }
 
 /** Validate raw input into sanitized {@link BoardSettings} (unknown fields dropped). */
@@ -258,6 +265,13 @@ export function asBoardSettings(raw: unknown): BoardSettings {
     }
     out.dispatchIntervalMs = e.dispatchIntervalMs
   }
+  if (e.completedDisplayLimit !== undefined) {
+    if (typeof e.completedDisplayLimit !== 'number' || !Number.isSafeInteger(e.completedDisplayLimit)
+      || e.completedDisplayLimit < MIN_COMPLETED_DISPLAY_LIMIT || e.completedDisplayLimit > MAX_COMPLETED_DISPLAY_LIMIT) {
+      throw new Error(`completedDisplayLimit must be an integer from ${MIN_COMPLETED_DISPLAY_LIMIT} to ${MAX_COMPLETED_DISPLAY_LIMIT}`)
+    }
+    out.completedDisplayLimit = e.completedDisplayLimit
+  }
   return out
 }
 
@@ -294,6 +308,11 @@ export function queueMaxAgeMinutesOf(settings?: BoardSettings): number {
 /** Effective minimum spacing between scheduled session starts. */
 export function dispatchIntervalMsOf(settings?: BoardSettings): number {
   return settings?.dispatchIntervalMs ?? DEFAULT_DISPATCH_INTERVAL_MS
+}
+
+/** Effective completed tasks display limit (board setting → factory default 50). */
+export function completedDisplayLimitOf(settings?: BoardSettings): number {
+  return settings?.completedDisplayLimit ?? DEFAULT_COMPLETED_DISPLAY_LIMIT
 }
 
 /** How a task may run. */

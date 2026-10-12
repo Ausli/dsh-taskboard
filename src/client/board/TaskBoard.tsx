@@ -7,7 +7,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { BoardController, ControllerState } from '../controller.ts'
 import type { TaskRecord, TaskStatus, Urgency } from '../../shared/protocol.ts'
-import { MAIN_STATUSES, canTransition } from '../../shared/protocol.ts'
+import { MAIN_STATUSES, canTransition, completedDisplayLimitOf } from '../../shared/protocol.ts'
 import { PLUGIN_VERSION } from '../../shared/version.ts'
 import { COLUMN_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
@@ -65,6 +65,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // ⬇ 导出 ▼ dropdown (0.5.1): whole-ledger JSON backup or task-list CSV.
   const [exportOpen, setExportOpen] = useState(false)
   const closeExport = (): void => setExportOpen(false)
+  // Fold/expand toggle for completed tasks (0.8.8)
+  const [doneExpanded, setDoneExpanded] = useState(false)
 
   return (
     <div className="dsh-atb-board">
@@ -208,6 +210,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           <div className="dsh-atb-columns">
             {MAIN_STATUSES.map(status => {
               const columnTasks = live.filter(t => t.status === status)
+              const isDone = status === 'done'
+              const doneLimit = completedDisplayLimitOf(state.ledger.settings)
+              const isSearching = state.search.trim().length > 0
+              const isFolded = isDone && !isSearching && !doneExpanded && columnTasks.length > doneLimit
+              const visibleTasks = isFolded ? columnTasks.slice(0, doneLimit) : columnTasks
+              const foldedCount = columnTasks.length - visibleTasks.length
               return (
                 <div
                   className="dsh-atb-column"
@@ -249,7 +257,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     )}
                   </div>
                   <div className="dsh-atb-cards">
-                    {columnTasks.map(task => (
+                    {visibleTasks.map(task => (
                       <TaskCard
                         key={task.id}
                         task={task}
@@ -260,6 +268,30 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       />
                     ))}
                     {columnTasks.length === 0 && <div className="dsh-atb-empty">{t('board.empty')}</div>}
+                    {isDone && !isSearching && columnTasks.length > doneLimit && (
+                      <div className="dsh-atb-done-foldbar">
+                        {!doneExpanded ? (
+                          <>
+                            <span className="dsh-atb-done-foldtip">{t('board.done.folded', { n: foldedCount })}</span>
+                            <button
+                              type="button"
+                              className="dsh-atb-btn dsh-atb-done-foldbtn"
+                              onClick={() => setDoneExpanded(true)}
+                            >
+                              {t('board.done.expandAll')}
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="dsh-atb-btn dsh-atb-done-foldbtn"
+                            onClick={() => setDoneExpanded(false)}
+                          >
+                            {t('board.done.collapse')}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )

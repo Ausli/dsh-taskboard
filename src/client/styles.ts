@@ -252,6 +252,14 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 
 .dsh-atb-error { font-size: 12px; color: #e5484d; padding: 4px 8px; border-radius: 6px; background: rgba(229,72,77,.1); }
 .dsh-atb-empty { font-size: 12px; color: var(--dsw-text-secondary, gray); padding: 10px 4px; }
+.dsh-atb-done-foldbar {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 8px 10px; margin-top: 4px; border-radius: 8px;
+  background: var(--dsw-bg-elevated, rgba(128,128,128,.08));
+  border: 1px dashed var(--dsw-border, rgba(128,128,128,.3)); text-align: center;
+}
+.dsh-atb-done-foldtip { font-size: 11px; color: var(--dsw-text-secondary, gray); }
+.dsh-atb-done-foldbtn { font-size: 11.5px; padding: 2px 10px; }
 
 .dsh-atb-detail {
   display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; flex: 1;

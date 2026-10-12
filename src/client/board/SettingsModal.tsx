@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { CatalogModelItem, CatalogPresetItem } from '../../shared/api.ts'
-import { DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
+import { DEFAULT_COMPLETED_DISPLAY_LIMIT, DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, MIN_COMPLETED_DISPLAY_LIMIT, MAX_COMPLETED_DISPLAY_LIMIT, completedDisplayLimitOf, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 
 /** The isolation options with one-line hints (mirrors the task form; translated per render). */
@@ -33,6 +33,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const currentMissedAfterMinutes = scheduleMissedAfterMinutesOf(state.ledger.settings)
   const currentQueueMaxAgeMinutes = queueMaxAgeMinutesOf(state.ledger.settings)
   const currentDispatchIntervalMs = dispatchIntervalMsOf(state.ledger.settings)
+  const currentCompletedLimit = completedDisplayLimitOf(state.ledger.settings)
   const currentModel = state.ledger.settings?.defaultModel
   const currentModelKey = currentModel === undefined ? '' : JSON.stringify({ provider: currentModel.provider, model: currentModel.model })
   const currentEffort = currentModel?.reasoningEffort ?? ''
@@ -53,6 +54,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const [draftMissedAfterMinutes, setDraftMissedAfterMinutes] = useState(String(currentMissedAfterMinutes))
   const [draftQueueMaxAgeMinutes, setDraftQueueMaxAgeMinutes] = useState(String(currentQueueMaxAgeMinutes))
   const [draftDispatchIntervalMs, setDraftDispatchIntervalMs] = useState(String(currentDispatchIntervalMs))
+  const [draftCompletedLimit, setDraftCompletedLimit] = useState(String(currentCompletedLimit))
   const [storagePath, setStoragePath] = useState(state.storage?.currentDirectory ?? '')
   const [storageTouched, setStorageTouched] = useState(false)
   const [storageBusy, setStorageBusy] = useState(false)
@@ -60,14 +62,17 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
   const missedAfterMinutes = Number(draftMissedAfterMinutes)
   const queueMaxAgeMinutes = Number(draftQueueMaxAgeMinutes)
   const dispatchIntervalMs = Number(draftDispatchIntervalMs)
+  const completedLimit = Number(draftCompletedLimit)
   const scheduleValid = Number.isSafeInteger(maxConcurrent) && maxConcurrent >= 1 && maxConcurrent <= 100
     && Number.isSafeInteger(missedAfterMinutes) && missedAfterMinutes >= 1 && missedAfterMinutes <= 1440
     && Number.isSafeInteger(queueMaxAgeMinutes) && queueMaxAgeMinutes >= 0 && queueMaxAgeMinutes <= 10080
     && Number.isSafeInteger(dispatchIntervalMs) && dispatchIntervalMs >= 0 && dispatchIntervalMs <= 60000
+  const completedLimitValid = Number.isSafeInteger(completedLimit) && completedLimit >= MIN_COMPLETED_DISPLAY_LIMIT && completedLimit <= MAX_COMPLETED_DISPLAY_LIMIT
   const dirty = draftModel !== currentModelKey || draftEffort !== currentEffort || draftPreset !== currentPreset
     || draftIso !== currentIso || draftSync !== currentSync || draftPerm !== currentPerm
     || draftMaxConcurrent !== String(currentMaxConcurrent) || draftMissedAfterMinutes !== String(currentMissedAfterMinutes)
     || draftQueueMaxAgeMinutes !== String(currentQueueMaxAgeMinutes) || draftDispatchIntervalMs !== String(currentDispatchIntervalMs)
+    || draftCompletedLimit !== String(currentCompletedLimit)
   const effectiveStoragePath = storagePath.trim().length === 0 ? state.storage?.defaultDirectory ?? '' : storagePath.trim()
   const storageDirty = state.storage !== undefined && effectiveStoragePath !== state.storage.currentDirectory
 
@@ -95,6 +100,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
       scheduleMissedAfterMinutes: missedAfterMinutes,
       queueMaxAgeMinutes,
       dispatchIntervalMs,
+      completedDisplayLimit: completedLimit,
     }).then(ok => {
       if (ok) controller.closeSettings()
     })
@@ -274,6 +280,26 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
           </section>
 
           <section className="dsh-atb-diag-sec">
+            <h4>{t('set.completedLimit.heading')}</h4>
+            <p className="dsh-atb-isolation-note">{t('set.completedLimit.hint')}</p>
+            <div className="dsh-atb-settings-numbers">
+              <label>
+                <span>{t('set.completedLimit.label')}</span>
+                <input
+                  className="dsh-atb-input"
+                  type="number"
+                  min={MIN_COMPLETED_DISPLAY_LIMIT}
+                  max={MAX_COMPLETED_DISPLAY_LIMIT}
+                  step="1"
+                  value={draftCompletedLimit}
+                  onChange={e => setDraftCompletedLimit(e.target.value)}
+                />
+              </label>
+            </div>
+            {!completedLimitValid && <span className="dsh-atb-storage-error">{t('set.schedule.invalid')}</span>}
+          </section>
+
+          <section className="dsh-atb-diag-sec">
             <h4>{t('set.storage.heading')}</h4>
             <p className="dsh-atb-isolation-note">{t('set.storage.hint')}</p>
             <input
@@ -341,7 +367,7 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
           <span className="dsh-atb-modal-hint">{dirty ? t('set.foot.dirty') : t('set.foot.clean')}</span>
           <span className="dsh-atb-modal-footbtns">
             <button type="button" className="dsh-atb-btn" onClick={() => controller.closeSettings()}>{t('shared.cancel')}</button>
-            <button type="button" className="dsh-atb-btn" data-primary="true" disabled={!dirty || !scheduleValid} onClick={save}>{t('set.action.save')}</button>
+            <button type="button" className="dsh-atb-btn" data-primary="true" disabled={!dirty || !scheduleValid || !completedLimitValid} onClick={save}>{t('set.action.save')}</button>
           </span>
         </div>
       </div>

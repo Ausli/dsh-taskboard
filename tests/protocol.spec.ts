@@ -22,6 +22,10 @@ import {
   defaultPermissionOf,
   defaultSyncExternalSessionsOf,
   dispatchIntervalMsOf,
+  completedDisplayLimitOf,
+  DEFAULT_COMPLETED_DISPLAY_LIMIT,
+  MIN_COMPLETED_DISPLAY_LIMIT,
+  MAX_COMPLETED_DISPLAY_LIMIT,
   maxConcurrentOf,
   queueMaxAgeMinutesOf,
   scheduleMissedAfterMinutesOf,
@@ -293,7 +297,7 @@ describe('board settings & default isolation (0.5.0)', () => {
   })
 
   it('asBoardSettings sanitizes; defaultIsolationOf, defaultSyncExternalSessionsOf, and defaultPermissionOf resolve setting → factory', () => {
-    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15, queueMaxAgeMinutes: 60, dispatchIntervalMs: 1_500, junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15, queueMaxAgeMinutes: 60, dispatchIntervalMs: 1_500 })
+    expect(asBoardSettings({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15, queueMaxAgeMinutes: 60, dispatchIntervalMs: 1_500, completedDisplayLimit: 80, junk: 1 })).toEqual({ defaultIsolation: 'worktree', syncExternalSessions: true, defaultPermission: 'read-only', maxConcurrent: 8, scheduleMissedAfterMinutes: 15, queueMaxAgeMinutes: 60, dispatchIntervalMs: 1_500, completedDisplayLimit: 80 })
     expect(asBoardSettings({ syncExternalSessions: false })).toEqual({ syncExternalSessions: false })
     expect(asBoardSettings({ defaultPermission: 'fullAccess' })).toEqual({ defaultPermission: 'danger-full-access' })
     expect(asBoardSettings({})).toEqual({})
@@ -307,7 +311,17 @@ describe('board settings & default isolation (0.5.0)', () => {
     expect(() => asBoardSettings({ queueMaxAgeMinutes: -1 })).toThrow('queueMaxAgeMinutes')
     expect(asBoardSettings({ dispatchIntervalMs: 0 })).toEqual({ dispatchIntervalMs: 0 })
     expect(() => asBoardSettings({ dispatchIntervalMs: 60_001 })).toThrow('dispatchIntervalMs')
+    expect(() => asBoardSettings({ completedDisplayLimit: 9 })).toThrow('completedDisplayLimit')
+    expect(() => asBoardSettings({ completedDisplayLimit: 501 })).toThrow('completedDisplayLimit')
+    expect(() => asBoardSettings({ completedDisplayLimit: 50.5 })).toThrow('completedDisplayLimit')
+    expect(() => asBoardSettings({ completedDisplayLimit: '50' })).toThrow('completedDisplayLimit')
     expect(() => asBoardSettings(null)).toThrow('object')
+    expect(DEFAULT_COMPLETED_DISPLAY_LIMIT).toBe(50)
+    expect(MIN_COMPLETED_DISPLAY_LIMIT).toBe(10)
+    expect(MAX_COMPLETED_DISPLAY_LIMIT).toBe(500)
+    expect(completedDisplayLimitOf(undefined)).toBe(50)
+    expect(completedDisplayLimitOf({})).toBe(50)
+    expect(completedDisplayLimitOf({ completedDisplayLimit: 80 })).toBe(80)
     expect(defaultIsolationOf(undefined)).toBe('none')
     expect(defaultIsolationOf({})).toBe('none')
     expect(defaultIsolationOf({ defaultIsolation: 'worktree' })).toBe('worktree')
