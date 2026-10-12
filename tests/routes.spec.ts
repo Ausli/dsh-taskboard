@@ -1016,7 +1016,7 @@ describe('taskboard routes 0.4.0 (checklist / templates / import / diff)', () =>
     // Built-ins seed with their factory categories (0.8.8).
     const rows = list.value.templates as Array<{ name: string; category?: string }>
     expect(rows.find(t => t.name === 'Bug 修复')?.category).toBe('开发')
-    expect(rows.find(t => t.name === '例行巡检')?.category).toBe('运营')
+    expect(rows.find(t => t.name === '例行巡检')?.category).toBe('运维')
 
     const created = await post('/dsh-taskboard/templates', {
       name: '我的模板',

@@ -188,7 +188,7 @@ describe('built-in template localization', () => {
         expect(builtinTemplateContent(id, locale)?.category?.length ?? 0).toBeGreaterThan(0)
       }
     }
-    expect(builtinTemplateContent('tpl-patrol', 'zh')?.category).toBe('运营')
+    expect(builtinTemplateContent('tpl-patrol', 'zh')?.category).toBe('运维')
     expect(builtinTemplateContent('tpl-patrol', 'en')?.category).toBe('Operations')
   })
 

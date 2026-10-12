@@ -78,7 +78,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
     },
     'tpl-patrol': {
       name: '例行巡检',
-      category: '运营',
+      category: '运维',
       task: {
         title: '巡检：',
         prompt: [

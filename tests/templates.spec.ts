@@ -42,7 +42,7 @@ describe('TemplateStore', () => {
     expect(list.map(t => t.name)).toEqual(BUILTIN_TEMPLATES.map(t => t.name))
     expect(list.every(t => t.builtin === true)).toBe(true)
     expect(list.find(t => t.id === 'tpl-bugfix')?.category).toBe('开发')
-    expect(list.find(t => t.id === 'tpl-patrol')?.category).toBe('运营')
+    expect(list.find(t => t.id === 'tpl-patrol')?.category).toBe('运维')
     // Seeded on disk: a second store over the same file reads the same list.
     const again = await new TemplateStore(join(dir, 'a-templates.json')).list()
     expect(again.map(t => t.id)).toEqual(list.map(t => t.id))
