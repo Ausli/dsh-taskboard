@@ -153,4 +153,40 @@ describe('board model, effort and preset defaults', () => {
     expect(view.field('模型（默认 = 会话默认模型）').value).toBe('')
     expect(view.field('执行模式（preset）').value).toBe('')
   })
+
+  it('configures completed tasks display limit in SettingsModal with validation', async () => {
+    const view = await setup({ completedDisplayLimit: 80 })
+    const { root, controller, host, button, saved } = view
+    root.render(React.createElement(SettingsModal, { controller }))
+    const inputFor = (labelText: string) => {
+      const label = Array.from(host.querySelectorAll('label')).find(el => el.querySelector('span')?.textContent?.includes(labelText))
+      return label?.querySelector('input')
+    }
+    await waitFor(() => inputFor('已完成任务展示上限') !== undefined)
+    const limitInput = inputFor('已完成任务展示上限')!
+    expect(limitInput.value).toBe('80')
+    expect(button('保存设置').disabled).toBe(true)
+
+    const setInputValue = (input: HTMLInputElement, val: string) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, val)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+
+    // Set to invalid (< 10)
+    setInputValue(limitInput, '5')
+    await waitFor(() => button('保存设置').disabled === true)
+
+    // Set to invalid (> 500)
+    setInputValue(limitInput, '550')
+    await waitFor(() => button('保存设置').disabled === true)
+
+    // Set to valid (120)
+    setInputValue(limitInput, '120')
+    await waitFor(() => button('保存设置').disabled === false)
+
+    button('保存设置').click()
+    await waitFor(() => saved.length === 1)
+    expect(saved[0]).toMatchObject({ completedDisplayLimit: 120 })
+  })
 })

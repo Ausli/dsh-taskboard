@@ -54,6 +54,69 @@ export function titleFromText(text: string): string {
 }
 
 /**
+ * Extract title from a Session instance, session projection, or event history.
+ */
+export function extractSessionTitle(session: unknown): string | undefined {
+  if (typeof session !== 'object' || session === null) return undefined
+  const s = session as Record<string, unknown>
+
+  // 1. Direct title or displayTitle property
+  if (typeof s.title === 'string' && s.title.trim().length > 0) {
+    return s.title.trim()
+  }
+  if (typeof s.displayTitle === 'string' && s.displayTitle.trim().length > 0) {
+    return s.displayTitle.trim()
+  }
+
+  // 2. Projections map or property
+  if (typeof s.projections === 'object' && s.projections !== null) {
+    const proj = s.projections as Record<string, unknown>
+    if (typeof proj.title === 'string' && proj.title.trim().length > 0) {
+      return proj.title.trim()
+    }
+  }
+
+  // 3. Header or meta title
+  if (typeof s.header === 'object' && s.header !== null) {
+    const h = s.header as Record<string, unknown>
+    if (typeof h.title === 'string' && h.title.trim().length > 0) {
+      return h.title.trim()
+    }
+  }
+  if (typeof s.meta === 'object' && s.meta !== null) {
+    const m = s.meta as Record<string, unknown>
+    if (typeof m.title === 'string' && m.title.trim().length > 0) {
+      return m.title.trim()
+    }
+  }
+
+  // 4. Scan events in reverse for session/title event
+  let events: unknown[] | undefined
+  if (typeof s.snapshotEvents === 'function') {
+    try {
+      events = (s.snapshotEvents as () => unknown[])()
+    } catch { /* ignore */ }
+  } else if (Array.isArray(s.events)) {
+    events = s.events
+  }
+
+  if (Array.isArray(events) && events.length > 0) {
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i] as { type?: string; data?: { title?: string } }
+      if (
+        ev?.type === 'session/title' &&
+        typeof ev.data?.title === 'string' &&
+        ev.data.title.trim().length > 0
+      ) {
+        return ev.data.title.trim()
+      }
+    }
+  }
+
+  return undefined
+}
+
+/**
  * Detect whether a session represents a subagent child conversation.
  * Subagents are created by agent delegation (e.g. invoke_subagent / subagents service)
  * and should never be automatically converted into user tasks on the taskboard.
@@ -274,6 +337,26 @@ export class ExternalSessionSyncService {
         continue
       }
 
+      // Reconcile task title if real session title is available
+      const realTitle = extractSessionTitle(session)
+      if (realTitle !== undefined && realTitle.length > 0) {
+        const normalizedReal = normalizeTitle(realTitle)
+        const isPlaceholder = task.title.startsWith('会话 ') && task.title.length <= 16
+        const isAutoCreated = task.createdBy.kind === 'agent' && task.createdBy.sessionId === sessionId
+        if (task.title !== normalizedReal && (isPlaceholder || isAutoCreated)) {
+          await this.deps.store.mutate('task-updated', (ledger) => {
+            const current = ledger.tasks.find(t => t.id === task.id)
+            if (current === undefined || current.trashedAt !== undefined) return undefined
+            if (current.title !== normalizedReal) {
+              current.title = normalizedReal
+              current.updatedAt = now
+              return [current]
+            }
+            return undefined
+          })
+        }
+      }
+
       const isWorking = isSessionActiveWorking(session)
       if (isWorking) {
         if (task.status !== 'in_progress') {
@@ -351,7 +434,7 @@ export class ExternalSessionSyncService {
     }
 
     if (event.type === 'turn/start') {
-      await this.handleTurnStart(sessionId, sessionMeta?.header?.cwd, now)
+      await this.handleTurnStart(sessionId, sessionMeta?.header?.cwd, now, sessionMeta)
       return
     }
 
@@ -437,7 +520,12 @@ export class ExternalSessionSyncService {
     if (touched) this.lastActivityAt.set(sessionId, now)
   }
 
-  private async handleTurnStart(sessionId: string, cwd: string | undefined, now: number): Promise<void> {
+  private async handleTurnStart(
+    sessionId: string,
+    cwd: string | undefined,
+    now: number,
+    sessionMeta?: unknown,
+  ): Promise<void> {
     // Resolve workspace
     let wsId: string | undefined
     if (cwd !== undefined && cwd.length > 0) {
@@ -494,11 +582,27 @@ export class ExternalSessionSyncService {
         return [existing]
       }
 
+      // Try resolving initial title from sessionMeta or live session
+      let initialTitle: string | undefined
+      if (sessionMeta !== undefined) {
+        initialTitle = extractSessionTitle(sessionMeta)
+      }
+      if (initialTitle === undefined && this.deps.sessions?.get !== undefined) {
+        try {
+          const live = this.deps.sessions.get(sessionId)
+          initialTitle = extractSessionTitle(live)
+        } catch { /* ignore */ }
+      }
+
       // Create new task for this external session
       const shortId = sessionId.replace(/^session-/, '').slice(0, 8)
+      const newTaskTitle = initialTitle !== undefined && initialTitle.length > 0
+        ? normalizeTitle(initialTitle)
+        : `会话 ${shortId}`
+
       const newTask: TaskRecord = {
         id: newTaskId(),
-        title: `会话 ${shortId}`,
+        title: newTaskTitle,
         description: '',
         prompt: '',
         workspaceId: wsId,
@@ -543,12 +647,24 @@ export class ExternalSessionSyncService {
 
       let changed = false
       if (text.trim().length > 0) {
-        // If title is default placeholder "会话 ...", replace with prompt summary
+        // If title is default placeholder "会话 ...", try resolving real session title first,
+        // or derive from first-turn prompt text (never overwrite with subsequent turn commands)
         if (task.title.startsWith('会话 ') && task.title.length <= 16) {
-          const derived = titleFromText(text)
-          if (derived.length > 0) {
-            task.title = normalizeTitle(derived)
+          let realTitle: string | undefined
+          if (this.deps.sessions?.get !== undefined) {
+            try {
+              realTitle = extractSessionTitle(this.deps.sessions.get(sessionId))
+            } catch { /* ignore */ }
+          }
+          if (realTitle !== undefined && realTitle.length > 0) {
+            task.title = normalizeTitle(realTitle)
             changed = true
+          } else if (task.executions.length <= 1) {
+            const derived = titleFromText(text)
+            if (derived.length > 0) {
+              task.title = normalizeTitle(derived)
+              changed = true
+            }
           }
         }
         // If description is empty, record initial prompt

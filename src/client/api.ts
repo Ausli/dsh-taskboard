@@ -113,7 +113,7 @@ async function uploadImage(file: Blob): Promise<AttachmentUpload> {
 
 /** Route client face (the controller consumes this narrow surface). */
 export interface TaskboardClient {
-  state(): Promise<StateResponse>
+  state(options?: { excludeDone?: boolean }): Promise<StateResponse>
   workspaces(): Promise<WorkspaceView[]>
   projectSessions(workspaceId: string): Promise<{ sessions: ProjectSessionView[] }>
   create(body: CreateTaskBody): Promise<TaskSummary>
@@ -173,7 +173,10 @@ export interface TaskboardClient {
 /** Build the client over fetch + EventSource. */
 export function createClient(): TaskboardClient {
   return {
-    state: () => get<StateResponse>('/dsh-taskboard/state'),
+    state: (options) => {
+      const query = options?.excludeDone === true ? '?excludeDone=true' : ''
+      return get<StateResponse>(`/dsh-taskboard/state${query}`)
+    },
     workspaces: () => get<WorkspaceView[]>('/dsh-taskboard/workspaces'),
     projectSessions: workspaceId => get<{ sessions: ProjectSessionView[] }>(`/dsh-taskboard/project-sessions?workspaceId=${encodeURIComponent(workspaceId)}`),
     create: body => post('/dsh-taskboard/tasks', body),

@@ -177,7 +177,7 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 .dsh-atb-btn[data-primary="true"] { background: var(--dsw-alias-button-primary-fill, var(--dsw-alias-brand-primary, #1f2328)); border-color: transparent; color: var(--dsw-alias-label-primary-foreground, #fff); }
 .dsh-atb-btn[data-danger="true"] { color: var(--dsw-alias-state-error-primary, #e5484d); border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary, #e5484d) 45%, transparent); }
 
-.dsh-atb-columns { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; flex: 1; min-height: 0; overflow-x: auto; }
+.dsh-atb-columns { display: flex; gap: 10px; flex: 1; min-height: 0; overflow-x: auto; }
 
 .dsh-atb-detailpanel {
   display: flex; flex-direction: column;
@@ -187,9 +187,60 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
   padding: 10px 12px; box-shadow: 0 -4px 18px rgba(0,0,0,.12);
 }
 .dsh-atb-detailpanel .dsh-atb-detail { flex: 1; min-height: 0; }
-.dsh-atb-column { display: flex; flex-direction: column; min-width: 200px; min-height: 0; border-radius: 10px; background: var(--dsw-bg-inset, rgba(128,128,128,.07)); padding: 8px; gap: 8px; }
+.dsh-atb-column { display: flex; flex-direction: column; flex: 1 1 0; min-width: 200px; min-height: 0; border-radius: 10px; background: var(--dsw-bg-inset, rgba(128,128,128,.07)); padding: 8px; gap: 8px; transition: flex-basis .15s ease, min-width .15s ease, max-width .15s ease; }
+.dsh-atb-column[data-collapsed="true"] {
+  flex: 0 0 42px;
+  min-width: 42px;
+  max-width: 42px;
+  padding: 8px 4px;
+  cursor: pointer;
+  align-items: center;
+  user-select: none;
+}
+.dsh-atb-column[data-collapsed="true"]:hover {
+  background: var(--dsw-bg-hover, rgba(128,128,128,.12));
+}
 .dsh-atb-colhead { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 2px 4px; }
 .dsh-atb-colcount { font-size: 11px; font-weight: 400; color: var(--dsw-text-secondary, gray); }
+.dsh-atb-colfoldbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--dsw-text-secondary, gray);
+  padding: 2px;
+  border-radius: 4px;
+  margin-left: auto;
+  line-height: 1;
+}
+.dsh-atb-colfoldbtn:hover {
+  color: var(--dsw-text-primary, currentColor);
+  background: var(--dsw-hover, rgba(128,128,128,.15));
+}
+.dsh-atb-col-collapsed-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding-top: 4px;
+}
+.dsh-atb-col-collapsed-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.dsh-atb-col-collapsed-text {
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-text-secondary, inherit);
+}
 .dsh-atb-colhead .dsh-atb-btn { margin-left: auto; padding: 1px 8px; font-size: 11px; }
 .dsh-atb-colhead .dsh-atb-btn + .dsh-atb-btn { margin-left: 0; }
 .dsh-atb-colhead .dsh-atb-selectall { flex: none; margin: 0 2px 0 6px; cursor: pointer; }
@@ -197,6 +248,20 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 .dsh-atb-selrow .dsh-atb-card, .dsh-atb-selrow > div { flex: 1; min-width: 0; }
 .dsh-atb-selbox { flex: none; margin: 4px 0 0 0; cursor: pointer; }
 .dsh-atb-cards { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; flex: 1; padding: 2px; }
+.dsh-atb-ws-group { display: flex; flex-direction: column; gap: 6px; }
+.dsh-atb-ws-group + .dsh-atb-ws-group { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--dsw-border, rgba(128,128,128,.2)); }
+.dsh-atb-ws-group-head {
+  display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--dsw-text-secondary, inherit);
+  background: var(--dsw-bg-hover, rgba(128,128,128,.08)); user-select: none;
+}
+.dsh-atb-ws-group-icon { display: inline-flex; align-items: center; justify-content: center; opacity: .8; line-height: 1; }
+.dsh-atb-ws-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-atb-ws-group-count {
+  font-size: 10px; font-weight: 500; padding: 0.5px 5px; border-radius: 10px;
+  background: var(--dsw-bg-inset, rgba(128,128,128,.14)); color: var(--dsw-text-secondary, gray);
+}
+.dsh-atb-ws-group-cards { display: flex; flex-direction: column; gap: 8px; }
 
 .dsh-atb-card {
   position: relative; border-radius: 9px; padding: 8px 10px 8px 13px; cursor: pointer;
@@ -222,6 +287,24 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 .dsh-atb-badge[data-kind="trashed"] { background: rgba(229,72,77,.14); color: #e5484d; text-decoration: line-through; }
 .dsh-atb-badge[data-kind="done"] { background: rgba(46,160,67,.16); color: #2ea043; }
 .dsh-atb-badge[data-kind="running"] { background: rgba(229,152,42,.16); color: #e69842; }
+.dsh-atb-badge[data-kind="session"] {
+  background: rgba(142, 78, 198, 0.12);
+  color: var(--dsw-alias-state-business-primary, #7c3aed);
+  border: 1px solid rgba(142, 78, 198, 0.25);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all .15s ease;
+}
+.dsh-atb-badge[data-kind="session"]:hover {
+  background: rgba(142, 78, 198, 0.22);
+  border-color: rgba(142, 78, 198, 0.45);
+}
 .dsh-atb-card-session {
   font: inherit; font-size: 10.5px; line-height: 1; padding: 2px 6px; border-radius: 5px;
   border: 1px solid var(--dsw-border, rgba(128,128,128,.3));
@@ -252,6 +335,14 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 
 .dsh-atb-error { font-size: 12px; color: #e5484d; padding: 4px 8px; border-radius: 6px; background: rgba(229,72,77,.1); }
 .dsh-atb-empty { font-size: 12px; color: var(--dsw-text-secondary, gray); padding: 10px 4px; }
+.dsh-atb-done-foldbar {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 8px 10px; margin-top: 4px; border-radius: 8px;
+  background: var(--dsw-bg-elevated, rgba(128,128,128,.08));
+  border: 1px dashed var(--dsw-border, rgba(128,128,128,.3)); text-align: center;
+}
+.dsh-atb-done-foldtip { font-size: 11px; color: var(--dsw-text-secondary, gray); }
+.dsh-atb-done-foldbtn { font-size: 11.5px; padding: 2px 10px; }
 
 .dsh-atb-detail {
   display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; flex: 1;

@@ -11,7 +11,7 @@
  *
  * @module dsh-taskboard/client/board/TaskCard
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { TaskRecord } from '../../shared/protocol.ts'
 import { fmtTime, isStaleClaim } from './format.ts'
@@ -22,9 +22,23 @@ import { useT } from '../i18n/runtime.ts'
 export const DRAG_TYPE = 'application/x-dsh-atb-task'
 
 /** Compact session-id display (execution sessions carry the taskboard infix). */
-function shortId(id: string | undefined): string {
+export function shortId(id: string | undefined): string {
   if (id === undefined) return ''
   return id.replace(/^session-(taskboard-)?/, '').slice(0, 8)
+}
+
+/** Resolve the most relevant session ID associated with a task. */
+export function resolveTaskSessionId(task: TaskRecord): string | undefined {
+  const running = task.executions?.find(ex => ex.outcome === 'running')
+  if (running?.sessionId) return running.sessionId
+  const sessionExecution = task.executions ? [...task.executions].reverse().find(ex => ex.sessionId !== undefined) : undefined
+  if (sessionExecution?.sessionId) return sessionExecution.sessionId
+  if (task.claimedBy?.startsWith('session-')) return task.claimedBy
+  if (task.execution?.autoReuseSessionId) return task.execution.autoReuseSessionId
+  if (task.execution?.reuseSessionId) return task.execution.reuseSessionId
+  if (task.createdBy?.kind === 'agent' && task.createdBy.sessionId) return task.createdBy.sessionId
+  if (task.updatedBy?.kind === 'agent' && task.updatedBy.sessionId) return task.updatedBy.sessionId
+  return undefined
 }
 
 /**
@@ -43,8 +57,18 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
   const running = task.executions.find(ex => ex.outcome === 'running')
   const stale = now !== undefined && isStaleClaim(task, now)
   const reviewing = task.status === 'in_review' && task.trashedAt === undefined
-  const sessionExecution = [...task.executions].reverse().find(ex => ex.sessionId !== undefined)
-  const targetSessionId = running?.sessionId ?? sessionExecution?.sessionId ?? (task.claimedBy?.startsWith('session-') ? task.claimedBy : undefined)
+  const targetSessionId = resolveTaskSessionId(task)
+  const sessionTitle = controller.getSessionTitle(targetSessionId)
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current !== null) {
+        clearTimeout(clickTimerRef.current)
+        clickTimerRef.current = null
+      }
+    }
+  }, [])
 
   /** Submit the quick-reject: one atomic route (move + optional note). */
   const submitReject = (): void => {
@@ -52,6 +76,54 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
       if (ok) { setRejectOpen(false); setNote('') }
       // On failure the error surface explains; the form stays open for retry.
     })
+  }
+
+  /** Single-click handler: debounce when a target session exists so double-click won't open details if closed. */
+  const handleClick = (e: MouseEvent): void => {
+    if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, textarea')) return
+
+    // If no target session, or this task's detail is ALREADY open, select immediately
+    if (targetSessionId === undefined || controller.getSnapshot().selectedId === task.id) {
+      controller.select(task.id)
+      return
+    }
+
+    // Otherwise, debounce single click so double-click can jump to session WITHOUT opening details
+    if (clickTimerRef.current !== null) {
+      clearTimeout(clickTimerRef.current)
+    }
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null
+      controller.select(task.id)
+    }, 250)
+  }
+
+  /** Double-click opens the associated session conversation directly without opening details. */
+  const handleDoubleClick = (e: MouseEvent): void => {
+    if (clickTimerRef.current !== null) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+
+    // Only the card surface itself, ignore nested buttons/inputs (like quick-reject controls)
+    if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, textarea')) return
+    if (targetSessionId !== undefined) {
+      void controller.openSession(targetSessionId).then(result => {
+        if (result === 'missing') {
+          const msg = t('card.session.missing', { id: shortId(targetSessionId) })
+          if (onAlert !== undefined) onAlert(msg)
+          else alert(msg)
+        } else if (result === 'archived') {
+          const msg = t('card.session.archived', { id: shortId(targetSessionId) })
+          if (onAlert !== undefined) onAlert(msg)
+          else alert(msg)
+        } else if (result === 'unavailable') {
+          const msg = t('card.session.unavailable', { id: targetSessionId })
+          if (onAlert !== undefined) onAlert(msg)
+          else alert(msg)
+        }
+      })
+    }
   }
 
   return (
@@ -75,7 +147,8 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
         e.currentTarget.dataset.dragging = 'true'
       }}
       onDragEnd={(e) => { delete e.currentTarget.dataset.dragging }}
-      onClick={() => controller.select(task.id)}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onKeyDown={(e) => {
         // Only the card itself (not the nested quick-action controls).
         if (e.target !== e.currentTarget) return
@@ -127,10 +200,14 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
           </span>
         )}
         {targetSessionId !== undefined && (
-          <button
-            type="button"
-            className="dsh-atb-card-session"
-            title={t('card.session.jumpTitle', { id: targetSessionId })}
+          <span
+            className="dsh-atb-badge"
+            data-kind="session"
+            title={
+              sessionTitle && sessionTitle !== task.title
+                ? t('card.session.tagTitleWithTitle', { title: sessionTitle, id: targetSessionId })
+                : t('card.session.tagTitle', { id: targetSessionId })
+            }
             onClick={(e) => {
               e.stopPropagation()
               void controller.openSession(targetSessionId).then(result => {
@@ -150,8 +227,8 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
               })
             }}
           >
-            🤖 {shortId(targetSessionId)} ↗
-          </button>
+            💬 {t('card.session.badge', { id: shortId(targetSessionId) })}
+          </span>
         )}
         {task.comments.length > 0 && <span>💬 {task.comments.length}</span>}
         {task.trashedAt !== undefined && <span className="dsh-atb-badge" data-kind="trashed">{t('card.badge.pendingPurge')}</span>}

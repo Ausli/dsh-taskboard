@@ -46,7 +46,7 @@ export type QueueSummary = {
   maxConcurrent: number
 }
 
-export type StateResponse = TaskLedger & { capabilities?: { archiveSessions: boolean }; queue?: QueueSummary }
+export type StateResponse = TaskLedger & { capabilities?: { archiveSessions: boolean }; queue?: QueueSummary; doneCount?: number }
 
 /** Result of dropping every durable queue entry (board queue panel). */
 export type QueueClearResponse = { cleared: number }
@@ -250,6 +250,8 @@ export type UpdateSettingsBody = {
   queueMaxAgeMinutes?: number
   /** Minimum milliseconds between scheduled session starts; defaults to 1000 and accepts 0 to disable throttling. */
   dispatchIntervalMs?: number
+  /** Maximum completed (done) tasks displayed on the board; defaults to 50 (10–500). */
+  completedDisplayLimit?: number
 }
 
 /** Prompt completion item for skills and slash commands (0.5.5). */

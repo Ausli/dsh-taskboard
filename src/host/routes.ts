@@ -359,6 +359,14 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
     if (hit !== undefined && options.now() - hit.at < GIT_DETECT_TTL_MS) {
       return { gitAvailable: hit.value, repoCount: hit.repoCount ?? (hit.value ? 1 : 0) }
     }
+    // Fast-path: SVN repositories never host git mirrors — skip nested scans completely.
+    try {
+      const { stat } = await import('node:fs/promises')
+      if ((await stat(join(path, '.svn'))).isDirectory()) {
+        gitCache.set(path, { value: false, at: options.now(), repoCount: 0 })
+        return { gitAvailable: false, repoCount: 0 }
+      }
+    } catch { /* not svn */ }
     let rootRepo = false
     try {
       rootRepo = await options.git.detect(path)
@@ -446,7 +454,19 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
         if (pathname === `${ROUTE_PREFIX}/state`) {
           await store.load()
           const ledger = store.snapshot()
-          json(res, { ok: true, value: { ...ledger, capabilities: { archiveSessions: typeof workspaces.archiveSession === 'function' }, queue: queueSummary(ledger) } })
+          const excludeDone = url.searchParams.get('excludeDone') === 'true' || url.searchParams.get('excludeDone') === '1'
+          const doneCount = ledger.tasks.filter(t => t.status === 'done' && t.trashedAt === undefined).length
+          const tasks = excludeDone ? ledger.tasks.filter(t => t.status !== 'done') : ledger.tasks
+          json(res, {
+            ok: true,
+            value: {
+              ...ledger,
+              tasks,
+              doneCount,
+              capabilities: { archiveSessions: typeof workspaces.archiveSession === 'function' },
+              queue: queueSummary(ledger),
+            },
+          })
           return
         }
         if (pathname === `${ROUTE_PREFIX}/workspaces`) {

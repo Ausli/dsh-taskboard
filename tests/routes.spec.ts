@@ -296,7 +296,42 @@ describe('taskboard routes', () => {
     const body = await res.json()
     expect(body.ok).toBe(true)
     expect(body.value.tasks).toEqual([])
+    expect(body.value.doneCount).toBe(0)
     expect(body.value.queue).toEqual({ depth: 0, dispatching: 0, maxConcurrent: 0 })
+  })
+
+  it('supports excludeDone parameter and reports doneCount', async () => {
+    // 创建两个任务，一个处于 todo，一个流转至 done
+    const createdTodo = await post('/dsh-taskboard/tasks', { title: 'Todo task', workspaceId: 'ws-a', urgency: 'normal' })
+    const todoId = createdTodo.json.value.id
+    const createdDone = await post('/dsh-taskboard/tasks', { title: 'Done task', workspaceId: 'ws-a', urgency: 'normal' })
+    const doneId = createdDone.json.value.id
+
+    await post(`/dsh-taskboard/tasks/${doneId}/move`, { ifVersion: 1, status: 'in_progress' })
+    await post(`/dsh-taskboard/tasks/${doneId}/move`, { ifVersion: 2, status: 'in_review' })
+    const moveRes = await post(`/dsh-taskboard/tasks/${doneId}/move`, { ifVersion: 3, status: 'done' })
+    expect(moveRes.json.value.status).toBe('done')
+
+    // 默认全量请求：包含 todo 和 done，doneCount 为 1
+    const resFull = await fetch(`${base}/dsh-taskboard/state`)
+    const bodyFull = await resFull.json()
+    expect(bodyFull.ok).toBe(true)
+    expect(bodyFull.value.doneCount).toBe(1)
+    expect(bodyFull.value.tasks.some((t: any) => t.id === todoId)).toBe(true)
+    expect(bodyFull.value.tasks.some((t: any) => t.id === doneId)).toBe(true)
+
+    // 携带 excludeDone=true：不包含 done 任务，但 doneCount 仍为 1
+    const resExcluded = await fetch(`${base}/dsh-taskboard/state?excludeDone=true`)
+    const bodyExcluded = await resExcluded.json()
+    expect(bodyExcluded.ok).toBe(true)
+    expect(bodyExcluded.value.doneCount).toBe(1)
+    expect(bodyExcluded.value.tasks.some((t: any) => t.id === todoId)).toBe(true)
+    expect(bodyExcluded.value.tasks.some((t: any) => t.id === doneId)).toBe(false)
+
+    // 携带 excludeDone=1
+    const resExcludedNum = await fetch(`${base}/dsh-taskboard/state?excludeDone=1`)
+    const bodyExcludedNum = await resExcludedNum.json()
+    expect(bodyExcludedNum.value.tasks.some((t: any) => t.id === doneId)).toBe(false)
   })
 
   it('lists workspaces for the picker (with git availability)', async () => {
