@@ -359,6 +359,14 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
     if (hit !== undefined && options.now() - hit.at < GIT_DETECT_TTL_MS) {
       return { gitAvailable: hit.value, repoCount: hit.repoCount ?? (hit.value ? 1 : 0) }
     }
+    // Fast-path: SVN repositories never host git mirrors — skip nested scans completely.
+    try {
+      const { stat } = await import('node:fs/promises')
+      if ((await stat(join(path, '.svn'))).isDirectory()) {
+        gitCache.set(path, { value: false, at: options.now(), repoCount: 0 })
+        return { gitAvailable: false, repoCount: 0 }
+      }
+    } catch { /* not svn */ }
     let rootRepo = false
     try {
       rootRepo = await options.git.detect(path)
