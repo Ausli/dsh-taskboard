@@ -1425,6 +1425,56 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  it('task form: 存为模板 saves the current form contents as a template', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskFormModal } = await import('../src/client/board/TaskFormModal.tsx')
+
+    const upserts: unknown[] = []
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+      templates: async () => ({ templates: [] }),
+      templateUpsert: async (body: unknown) => { upserts.push(body); return body as never },
+    }
+    const controller = new BoardController(client as never)
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+    controller.setComposer(true)
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    root.render(React.createElement(TaskFormModal, { controller }))
+    await new Promise(r => setTimeout(r, 20))
+
+    const saveTpl = (): HTMLButtonElement =>
+      (Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-modal-footbtns .dsh-atb-btn')).find(b => b.textContent!.includes('存为模板')))!
+    // Empty title → no template name → button disabled.
+    expect(saveTpl().disabled).toBe(true)
+
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    const titleInput = host.querySelector<HTMLInputElement>('input[maxlength="200"]')!
+    setter?.call(titleInput, '我的新模板')
+    titleInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 10))
+    expect(saveTpl().disabled).toBe(false)
+    saveTpl().click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(upserts[0]).toMatchObject({ name: '我的新模板', task: { title: '我的新模板', urgency: 'normal', execution: { mode: 'claim' } } })
+
+    // The form stays open after saving the template; creating still works.
+    expect(controller.getSnapshot().composerOpen).toBe(true)
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
   it('import modal: file → preview plan → merge commit; replace demands double confirmation', async () => {
     localStorage.clear()
     const React = await import('react')

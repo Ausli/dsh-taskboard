@@ -16,6 +16,7 @@ import { MAX_CHECKLIST_ITEMS, asPermission, defaultIsolationOf, defaultPermissio
 import { fmtTime } from './format.ts'
 import { useT, type Translate } from '../i18n/runtime.ts'
 import { SlashPromptInput } from './SlashPromptInput.tsx'
+import { useAlert } from './AlertModal.tsx'
 
 /** One row of the configured model catalog (from llm.models). */
 export interface CatalogModel {
@@ -171,6 +172,7 @@ function ChecklistEditor({ rows, onChange, editing }: { rows: CheckRow[]; onChan
 export function TaskFormModal({ controller, task }: { controller: BoardController; task?: TaskRecord }) {
   const t = useT()
   const state = controller.getSnapshot()
+  const { alert: showAlert, el: alertEl } = useAlert()
   const prefill: TaskTemplateSpec | undefined = state.templatePrefill
   const editing = task !== undefined
   const [title, setTitle] = useState(task?.title ?? prefill?.title ?? '')
@@ -432,6 +434,29 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
         if (id !== undefined) await controller.run(id)
       }
     })().catch(() => undefined).finally(() => setBusy(false))
+  }
+
+  /** Save the current form contents as a reusable task template (0.8.8). */
+  const saveAsTemplate = (): void => {
+    if (busy || imageUploading) return
+    const name = title.trim()
+    if (name.length === 0) return
+    const rows = filledRows()
+    void controller.upsertTemplate({
+      name: name.slice(0, 60),
+      task: {
+        title: name,
+        description: description.length > 0 ? description : undefined,
+        prompt: prompt.length > 0 ? prompt : undefined,
+        urgency,
+        execution: executionPayload(),
+        model: buildPickedModel(),
+        isolation: isolationPayload(),
+        presetId: presetPayload(),
+        permission,
+        checklist: rows.length > 0 ? rows.map(r => r.text) : undefined,
+      },
+    }).then(ok => { if (ok) showAlert(t('detail.action.saveTplDone')) })
   }
 
   const hint = !valid
@@ -735,6 +760,15 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
             <button
               type="button"
               className="dsh-atb-btn"
+              disabled={title.trim().length === 0 || busy || imageUploading}
+              title={t('detail.action.saveTplTitle')}
+              onClick={saveAsTemplate}
+            >
+              {t('detail.action.saveTpl')}
+            </button>
+            <button
+              type="button"
+              className="dsh-atb-btn"
               disabled={!valid || runBlocked || busy || imageUploading}
               title={runBlocked ? t('form.action.runBlockedTitle') : busy || imageUploading ? t('form.action.runBusyTitle') : t('form.action.runTitle')}
               onClick={submitAndRun}
@@ -747,6 +781,7 @@ export function TaskFormModal({ controller, task }: { controller: BoardControlle
           </span>
         </div>
       </div>
+      {alertEl}
     </div>
   )
 }
