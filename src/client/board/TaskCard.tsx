@@ -11,7 +11,7 @@
  *
  * @module dsh-taskboard/client/board/TaskCard
  */
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import type { BoardController } from '../controller.ts'
 import type { TaskRecord } from '../../shared/protocol.ts'
 import { fmtTime, isStaleClaim } from './format.ts'
@@ -54,6 +54,29 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
     })
   }
 
+  /** Double-click opens the associated session conversation directly. */
+  const handleDoubleClick = (e: MouseEvent): void => {
+    // Only the card surface itself, ignore nested buttons/inputs (like quick-reject controls)
+    if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button, input, textarea')) return
+    if (targetSessionId !== undefined) {
+      void controller.openSession(targetSessionId).then(result => {
+        if (result === 'missing') {
+          const msg = t('card.session.missing', { id: shortId(targetSessionId) })
+          if (onAlert !== undefined) onAlert(msg)
+          else alert(msg)
+        } else if (result === 'archived') {
+          const msg = t('card.session.archived', { id: shortId(targetSessionId) })
+          if (onAlert !== undefined) onAlert(msg)
+          else alert(msg)
+        } else if (result === 'unavailable') {
+          const msg = t('card.session.unavailable', { id: targetSessionId })
+          if (onAlert !== undefined) onAlert(msg)
+          else alert(msg)
+        }
+      })
+    }
+  }
+
   return (
     <div
       role="button"
@@ -76,6 +99,7 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
       }}
       onDragEnd={(e) => { delete e.currentTarget.dataset.dragging }}
       onClick={() => controller.select(task.id)}
+      onDoubleClick={handleDoubleClick}
       onKeyDown={(e) => {
         // Only the card itself (not the nested quick-action controls).
         if (e.target !== e.currentTarget) return

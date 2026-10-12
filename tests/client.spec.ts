@@ -2067,6 +2067,71 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  it('TaskCard: double-clicking a card directly jumps to the associated session', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskCard } = await import('../src/client/board/TaskCard.tsx')
+    const { createSessionJumper } = await import('../src/client/session-jump.ts')
+
+    const taskLive = {
+      id: 't-dbl', title: 'Double click task', description: 'desc', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'in_progress' as const, blocked: false,
+      claimedBy: 'session-taskboard-t-dbl-1234',
+      execution: { mode: 'claim' as const }, version: 2, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [{
+        id: 'e-dbl', trigger: 'manual' as const, startedAt: 0, outcome: 'running' as const,
+        sessionId: 'session-taskboard-t-dbl-1234',
+      }],
+    }
+
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [taskLive] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+    }
+    const controller = new BoardController(client as never)
+
+    const opened: string[] = []
+    const sessions = {
+      open: (id: string) => { opened.push(id) },
+      refresh: async () => {},
+      list: { getSnapshot: () => ({ byId: { 'session-taskboard-t-dbl-1234': {} } }) },
+    }
+    const workspaces = { list: { getSnapshot: () => ({ archivedSessionIds: [] as string[] }) } }
+
+    controller.installSessionJumper(createSessionJumper({
+      getSessions: () => sessions as never,
+      getWorkspaces: () => workspaces as never,
+    }))
+    controller.start()
+    controller.openBoard()
+    await new Promise(r => setTimeout(r, 10))
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    root.render(React.createElement(TaskCard, { task: taskLive as never, controller }))
+    await new Promise(r => setTimeout(r, 10))
+
+    const card = host.querySelector<HTMLElement>('.dsh-atb-card')!
+    expect(card).not.toBeNull()
+
+    // Trigger double-click event on the card surface
+    card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 20))
+
+    expect(opened).toEqual(['session-taskboard-t-dbl-1234'])
+    expect(controller.getSnapshot().boardOpen).toBe(false)
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
   it('TaskFormModal: remembers last chosen model and supports reasoningEffort', async () => {
     localStorage.clear()
     const React = await import('react')
