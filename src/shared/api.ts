@@ -199,6 +199,8 @@ export type TaskTemplateSpec = {
 export type TaskTemplate = {
   id: string
   name: string
+  /** User-defined library category (0.8.8); absent templates group under the default bucket. */
+  category?: string
   task: TaskTemplateSpec
   /** Seeded built-in templates (kept on load, deletable like any other). */
   builtin?: boolean

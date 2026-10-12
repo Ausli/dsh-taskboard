@@ -825,7 +825,7 @@ export class BoardController {
   closeTemplateManager(): void { this.setState({ tplManagerOpen: false }) }
 
   /** Create or replace a template; refreshes the list. */
-  async upsertTemplate(body: { id?: string; name: string; task: TaskTemplateSpec }): Promise<boolean> {
+  async upsertTemplate(body: { id?: string; name: string; category?: string; task: TaskTemplateSpec }): Promise<boolean> {
     try {
       await this.client.templateUpsert(body)
       await this.loadTemplates()

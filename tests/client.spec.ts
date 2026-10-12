@@ -1258,7 +1258,7 @@ describe('client half', () => {
 
     const templateList = [
       { id: 'tpl-1', name: 'Bug 修复', task: { urgency: 'urgent', checklist: ['复现'] }, builtin: true, createdAt: 0, updatedAt: 0 },
-      { id: 'tpl-2', name: '我的模板', task: { title: '自定义' }, createdAt: 0, updatedAt: 0 },
+      { id: 'tpl-2', name: '我的模板', category: '服务', task: { title: '自定义' }, createdAt: 0, updatedAt: 0 },
     ]
     const upserts: unknown[] = []
     const deletes: string[] = []
@@ -1281,7 +1281,8 @@ describe('client half', () => {
     root.render(React.createElement(TaskBoard, { controller }))
     await new Promise(r => setTimeout(r, 10))
 
-    // Open the + 新建任务 ▼ dropdown: templates listed.
+    // Open the + 新建任务 ▼ dropdown: templates listed, grouped by category
+    // (0.8.8) with the default bucket (uncategorized) last.
     const menuBtn = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-newmenu > .dsh-atb-btn')).find(b => b.textContent!.includes('新建任务'))!
     menuBtn.click()
     await new Promise(r => setTimeout(r, 20))
@@ -1290,6 +1291,8 @@ describe('client half', () => {
     expect(options).toContain('Bug 修复')
     expect(options).toContain('我的模板')
     expect(options.some(o => o!.includes('管理模板'))).toBe(true)
+    const menuCats = Array.from(host.querySelectorAll<HTMLElement>('.dsh-atb-newmenu-cat')).map(el => el.textContent)
+    expect(menuCats).toEqual(['服务 (1)', '其他 (1)'])
 
     // Picking a template opens the composer prefilled from it.
     ;(Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-newmenu-opt')).find(b => b.textContent === '我的模板'))!.click()
@@ -1302,14 +1305,31 @@ describe('client half', () => {
     // Manager modal: rename save + delete flow reach the client.
     controller.openTemplateManager()
     await new Promise(r => setTimeout(r, 20))
+    // Groups mirror the menu; built-in rows show a read-only category.
+    const tplmCats = Array.from(host.querySelectorAll<HTMLElement>('.dsh-atb-tplm-cathead')).map(el => el.textContent)
+    expect(tplmCats).toEqual(['▍服务 (1)', '▍其他 (1)'])
+    expect(host.querySelectorAll('.dsh-atb-tplm-category').length).toBe(1)
+    expect(host.querySelector<HTMLElement>('.dsh-atb-tplm-catstatic')!.textContent).toBe('其他')
+    expect(Array.from(host.querySelectorAll('#dsh-atb-template-categories option')).map(o => (o as HTMLOptionElement).value)).toEqual(['服务'])
+
     const nameInput = host.querySelector<HTMLInputElement>('.dsh-atb-tplm-name')!
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     setter?.call(nameInput, '改名模板')
     nameInput.dispatchEvent(new Event('input', { bubbles: true }))
     await new Promise(r => setTimeout(r, 10))
-    ;(Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-tplm-btns .dsh-atb-btn')).find(b => b.textContent === '改名'))!.click()
+    // First row is now tpl-2 (the 服务 group sorts before the default bucket).
+    ;(Array.from(nameInput.closest('.dsh-atb-tplm-row')!.querySelectorAll<HTMLButtonElement>('.dsh-atb-btn')).find(b => b.textContent === '改名'))!.click()
     await new Promise(r => setTimeout(r, 10))
-    expect(upserts[0]).toMatchObject({ id: 'tpl-1', name: '改名模板' })
+    expect(upserts[0]).toMatchObject({ id: 'tpl-2', name: '改名模板' })
+
+    // Category edit on the same custom row reaches the upsert with the new label.
+    const catInput = host.querySelector<HTMLInputElement>('.dsh-atb-tplm-category')!
+    setter?.call(catInput, '服务B')
+    catInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 10))
+    ;(Array.from(catInput.closest('.dsh-atb-tplm-row')!.querySelectorAll<HTMLButtonElement>('.dsh-atb-btn')).find(b => b.textContent === '改名'))!.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(upserts[1]).toMatchObject({ id: 'tpl-2', name: '我的模板', category: '服务B' })
     controller.closeTemplateManager()
 
     root.unmount()

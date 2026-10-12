@@ -33,6 +33,7 @@ import {
   normalizeExecution,
   normalizeExecutionReport,
   normalizeModel,
+  normalizeTemplateCategory,
   parseCron,
   summarize,
   validateImportedTask,
@@ -207,6 +208,21 @@ describe('checklist', () => {
     expect(checklistProgress(task)).toEqual({ done: 1, total: 2 })
     expect(summarize(task).checklist).toEqual({ done: 1, total: 2 })
     expect(summarize(makeTask('t-nocl')).checklist).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// template category (0.8.8)
+// ---------------------------------------------------------------------------
+
+describe('template category', () => {
+  it('normalizes labels: trim, empty → undefined, cap 30 chars', () => {
+    expect(normalizeTemplateCategory('  开发  ')).toBe('开发')
+    expect(normalizeTemplateCategory('   ')).toBeUndefined()
+    expect(normalizeTemplateCategory(undefined)).toBeUndefined()
+    expect(() => normalizeTemplateCategory(null)).toThrow('must be a string')
+    expect(() => normalizeTemplateCategory(42)).toThrow('must be a string')
+    expect(() => normalizeTemplateCategory('x'.repeat(31))).toThrow('1..30')
   })
 })
 

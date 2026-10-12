@@ -11,6 +11,7 @@
 import { readFile } from 'node:fs/promises'
 import type { TaskTemplate } from '../shared/api.ts'
 import { BUILTIN_TEMPLATE_CONTENT, BUILTIN_TEMPLATE_IDS, type BuiltinTemplateId } from '../shared/builtin-templates.ts'
+import { normalizeTemplateCategory } from '../shared/protocol.ts'
 import type { StorageQueue } from './storage-queue.ts'
 
 /**
@@ -18,12 +19,21 @@ import type { StorageQueue } from './storage-queue.ts'
  * Seeded from the shared zh content (the side file is plain data; the client
  * resolves the active locale at render time — see shared/builtin-templates.ts).
  */
-export const BUILTIN_TEMPLATES: ReadonlyArray<{ id: BuiltinTemplateId; name: string; task: TaskTemplate['task'] }> =
-  BUILTIN_TEMPLATE_IDS.map(id => ({ id, name: BUILTIN_TEMPLATE_CONTENT.zh[id].name, task: BUILTIN_TEMPLATE_CONTENT.zh[id].task }))
+export const BUILTIN_TEMPLATES: ReadonlyArray<{ id: BuiltinTemplateId; name: string; category: string; task: TaskTemplate['task'] }> =
+  BUILTIN_TEMPLATE_IDS.map(id => ({ id, name: BUILTIN_TEMPLATE_CONTENT.zh[id].name, category: BUILTIN_TEMPLATE_CONTENT.zh[id].category, task: BUILTIN_TEMPLATE_CONTENT.zh[id].task }))
 
 /** Mint a template id. */
 function newTemplateId(): string {
   return `tpl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** Sanitize one loaded template without rejecting the whole side file. */
+function sanitizeLoadedTemplate(template: TaskTemplate): TaskTemplate {
+  let category: string | undefined
+  try {
+    category = normalizeTemplateCategory(template.category)
+  } catch { category = undefined }
+  return { ...template, category }
 }
 
 /**
@@ -61,6 +71,7 @@ export class TemplateStore {
         parsed = value.templates.filter((t): t is TaskTemplate =>
           typeof t === 'object' && t !== null && typeof (t as TaskTemplate).id === 'string'
           && typeof (t as TaskTemplate).name === 'string' && typeof (t as TaskTemplate).task === 'object')
+          .map(sanitizeLoadedTemplate)
       }
     } catch { /* missing or corrupt → seed */ }
     if (parsed === undefined) {
@@ -101,20 +112,21 @@ export class TemplateStore {
    * Create or replace a template by id (a body without id creates).
    * @returns the stored template.
    */
-  async upsert(input: { id?: string; name: string; task: TaskTemplate['task'] }): Promise<TaskTemplate> {
+  async upsert(input: { id?: string; name: string; category?: string; task: TaskTemplate['task'] }): Promise<TaskTemplate> {
     const run = async (): Promise<TaskTemplate> => {
     await this.ensure()
     const templates = this.templates ?? []
     const name = input.name.trim()
     if (name.length === 0 || name.length > 60) throw new Error('模板名必须 1..60 字符')
+    const category = normalizeTemplateCategory(input.category)
     const now = Date.now()
     const existing = input.id !== undefined ? templates.find(t => t.id === input.id) : undefined
     // T12: built-ins are factory content — editable only by delete + recreate
     // (deleting stays allowed), never silently overwritten in place.
     if (existing?.builtin === true) throw new Error('内置模板不可覆盖；可删除后另建，或以新名称存为新模板')
     const stored: TaskTemplate = existing !== undefined
-      ? { ...existing, name, task: input.task, updatedAt: now }
-      : { id: input.id ?? newTemplateId(), name, task: input.task, createdAt: now, updatedAt: now }
+      ? { ...existing, name, category, task: input.task, updatedAt: now }
+      : { id: input.id ?? newTemplateId(), name, category, task: input.task, createdAt: now, updatedAt: now }
     const index = existing !== undefined ? templates.indexOf(existing) : -1
     if (index >= 0) templates[index] = stored
     else templates.push(stored)

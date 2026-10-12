@@ -23,3 +23,9 @@ export function localizeBuiltinTask(tpl: Pick<TaskTemplate, 'id' | 'task' | 'bui
   if (tpl.builtin !== true) return tpl.task
   return builtinTemplateContent(tpl.id, localeStore.getSnapshot().active)?.task ?? tpl.task
 }
+
+/** The localized library category for a template (stored category for custom ones). */
+export function localizeBuiltinCategory(tpl: Pick<TaskTemplate, 'id' | 'category' | 'builtin'>): string | undefined {
+  if (tpl.builtin !== true) return tpl.category
+  return builtinTemplateContent(tpl.id, localeStore.getSnapshot().active)?.category ?? tpl.category
+}

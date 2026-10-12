@@ -1013,20 +1013,32 @@ describe('taskboard routes 0.4.0 (checklist / templates / import / diff)', () =>
     expect(names).toContain('发布检查')
     expect(names).toContain('例行巡检')
 
+    // Built-ins seed with their factory categories (0.8.8).
+    const rows = list.value.templates as Array<{ name: string; category?: string }>
+    expect(rows.find(t => t.name === 'Bug 修复')?.category).toBe('开发')
+    expect(rows.find(t => t.name === '例行巡检')?.category).toBe('运营')
+
     const created = await post('/dsh-taskboard/templates', {
       name: '我的模板',
+      category: '  服务  ',
       task: { title: '从模板开始', urgency: 'urgent', checklist: ['a', 'b'], execution: { mode: 'scheduled', cron: '0 9 * * 1' } },
     })
     expect(created.status).toBe(201)
     const id = created.json.value.id as string
     expect(created.json.value.task.checklist).toEqual(['a', 'b'])
+    expect(created.json.value.category).toBe('服务')
 
-    const renamed = await post('/dsh-taskboard/templates', { id, name: '改名后', task: { urgency: 'relaxed' } })
+    const renamed = await post('/dsh-taskboard/templates', { id, name: '改名后', category: '运营', task: { urgency: 'relaxed' } })
     expect(renamed.status).toBe(201)
+    expect(renamed.json.value.category).toBe('运营')
 
     // Bad spec rejected.
     const bad = await post('/dsh-taskboard/templates', { name: 'x', task: { urgency: 'hot' } })
     expect(bad.status).toBe(400)
+
+    // Bad category rejected (0.8.8).
+    const badCategory = await post('/dsh-taskboard/templates', { name: 'x', category: 'x'.repeat(31), task: { urgency: 'normal' } })
+    expect(badCategory.status).toBe(400)
 
     const deleted = await post('/dsh-taskboard/templates/delete', { id })
     expect(deleted.json.value.deleted).toBe(true)

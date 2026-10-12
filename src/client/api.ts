@@ -150,7 +150,7 @@ export interface TaskboardClient {
   /** List task templates. */
   templates(): Promise<TemplatesResponse>
   /** Create or replace a template. */
-  templateUpsert(body: { id?: string; name: string; task: TaskTemplate['task'] }): Promise<TaskTemplate>
+  templateUpsert(body: { id?: string; name: string; category?: string; task: TaskTemplate['task'] }): Promise<TaskTemplate>
   /** Delete a template by id. */
   templateDelete(id: string): Promise<{ deleted: boolean }>
   /** Board settings (0.5.0; absent fields = factory defaults). */

@@ -1365,6 +1365,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
           const template = await options.templates.upsert({
             id: str(body, 'id') ?? undefined,
             name,
+            category: body.category as string | undefined,
             task: normalizeTemplateSpec(body.task, options.now()),
           })
           json(res, { ok: true, value: template }, 201)

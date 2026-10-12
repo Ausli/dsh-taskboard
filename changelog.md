@@ -1,5 +1,13 @@
 # 更新日志 / Changelog
 
+### 0.8.8
+
+- **任务模板分类**：模板获得自定义类别（1..30 字符），「+ 新建任务 ▼」菜单与「管理模板」弹窗按类别分组展示，未分类模板归入「其他」组并固定排在最后。管理弹窗中自建模板可行内编辑类别（输入框联想已有类别，回车或「改名」按钮一并保存改名与类别），内置模板自带类别（开发 / 运营）并跟随界面语言显示。类别随模板保存在模板文件中，既有数据无需迁移。
+
+**English:**
+
+- **Template categories**: templates gain a user-defined category (1..30 characters); the "+ New Task ▼" menu and the manager dialog group templates by category, with uncategorized templates collected in the "Others" bucket that always sorts last. Custom templates edit their category inline in the manager (an input with datalist suggestions; Enter or the rename button saves name and category together), while built-ins ship factory categories (Development / Operations) resolved per GUI language. Categories persist in the template file — no migration needed.
+
 ### 0.8.7
 
 - **看板默认模型、推理强度与 Agent preset（[PR #43](https://github.com/cloader/dsh-taskboard/pull/43)）**：设置页新增三个选择器。GUI 和 `taskboard_create` 为新任务应用看板默认值；任务或模板的显式选择优先，GUI 可明确选择跟随部署默认。默认值在创建时物化，修改设置不会改写已有任务；未配置默认模型时保留 GUI 记住上次模型的行为。配置支持重启持久化和 JSON 导入导出，切换默认模型时重置推理强度。感谢 [@Fnckerpoi](https://github.com/Fnckerpoi) 的贡献。

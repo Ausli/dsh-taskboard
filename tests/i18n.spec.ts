@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { en } from '../src/client/i18n/en.ts'
 import { zh } from '../src/client/i18n/zh.ts'
-import { localizeBuiltinName, localizeBuiltinTask } from '../src/client/i18n/templates.ts'
-import { builtinTemplateContent } from '../src/shared/builtin-templates.ts'
+import { localizeBuiltinCategory, localizeBuiltinName, localizeBuiltinTask } from '../src/client/i18n/templates.ts'
+import { BUILTIN_TEMPLATE_IDS, builtinTemplateContent } from '../src/shared/builtin-templates.ts'
 import { COLUMN_KEYS, MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from '../src/client/board/labels.ts'
 import { disposeI18n, initI18n, localeStore, translate } from '../src/client/i18n/runtime.ts'
 
@@ -182,6 +182,14 @@ describe('built-in template localization', () => {
     expect(builtinTemplateContent('tpl-feature', 'zh')?.name).toBe('新增功能')
     expect(builtinTemplateContent('tpl-feature', 'en')?.name).toBe('New feature')
     expect(builtinTemplateContent('tpl-nope', 'en')).toBeUndefined()
+    // Every built-in ships a category in both locales (0.8.8).
+    for (const locale of ['zh', 'en'] as const) {
+      for (const id of BUILTIN_TEMPLATE_IDS) {
+        expect(builtinTemplateContent(id, locale)?.category?.length ?? 0).toBeGreaterThan(0)
+      }
+    }
+    expect(builtinTemplateContent('tpl-patrol', 'zh')?.category).toBe('运营')
+    expect(builtinTemplateContent('tpl-patrol', 'en')?.category).toBe('Operations')
   })
 
   it('localizeBuiltinName / localizeBuiltinTask follow the active locale', () => {
@@ -189,19 +197,24 @@ describe('built-in template localization', () => {
     disposeI18n()
     expect(localizeBuiltinName(builtin)).toBe('New feature')
     expect(localizeBuiltinTask(builtin).title).toBe('New feature:')
+    expect(localizeBuiltinCategory(builtin)).toBe('Development')
 
     document.documentElement.lang = 'zh-CN'
     disposeI18n()
     expect(localizeBuiltinName(builtin)).toBe('新增功能')
     expect(localizeBuiltinTask(builtin).title).toBe('新增：')
+    expect(localizeBuiltinCategory(builtin)).toBe('开发')
   })
 
   it('custom templates and unknown built-in ids pass through untouched', () => {
     document.documentElement.lang = 'en-US'
     disposeI18n()
-    const custom = { id: 'tpl-x', name: '我的模板', task: { title: '自定义' }, builtin: undefined }
+    const custom = { id: 'tpl-x', name: '我的模板', category: '服务', task: { title: '自定义' }, builtin: undefined }
     expect(localizeBuiltinName(custom)).toBe('我的模板')
     expect(localizeBuiltinTask(custom).title).toBe('自定义')
+    expect(localizeBuiltinCategory(custom)).toBe('服务')
+    const uncategorized = { id: 'tpl-y', name: '无类别', task: { title: '自定义' }, builtin: undefined }
+    expect(localizeBuiltinCategory(uncategorized)).toBeUndefined()
     const unknownBuiltin = { id: 'tpl-1', name: 'Bug 修复', task: { urgency: 'urgent' as const }, builtin: true }
     expect(localizeBuiltinName(unknownBuiltin)).toBe('Bug 修复')
     expect(localizeBuiltinTask(unknownBuiltin).urgency).toBe('urgent')

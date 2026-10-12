@@ -29,6 +29,8 @@ describe('TemplateStore', () => {
       const enT = BUILTIN_TEMPLATE_CONTENT.en[id]
       expect(zhT.name.length).toBeGreaterThan(0)
       expect(enT.name.length).toBeGreaterThan(0)
+      expect(zhT.category.length).toBeGreaterThan(0)
+      expect(enT.category.length).toBeGreaterThan(0)
       expect(enT.task.checklist?.length ?? 0).toBe(zhT.task.checklist?.length ?? 0)
       expect(enT.task.urgency).toBe(zhT.task.urgency)
     }
@@ -39,6 +41,8 @@ describe('TemplateStore', () => {
     const list = await store.list()
     expect(list.map(t => t.name)).toEqual(BUILTIN_TEMPLATES.map(t => t.name))
     expect(list.every(t => t.builtin === true)).toBe(true)
+    expect(list.find(t => t.id === 'tpl-bugfix')?.category).toBe('开发')
+    expect(list.find(t => t.id === 'tpl-patrol')?.category).toBe('运营')
     // Seeded on disk: a second store over the same file reads the same list.
     const again = await new TemplateStore(join(dir, 'a-templates.json')).list()
     expect(again.map(t => t.id)).toEqual(list.map(t => t.id))
@@ -57,6 +61,35 @@ describe('TemplateStore', () => {
 
     await expect(store.upsert({ name: '  ', task: {} })).rejects.toThrow('1..60')
     await expect(store.upsert({ name: 'x'.repeat(61), task: {} })).rejects.toThrow('1..60')
+  })
+
+  it('upserts and normalizes the category (0.8.8)', async () => {
+    const store = new TemplateStore(join(dir, 'e-templates.json'))
+    const created = await store.upsert({ name: '分类模板', category: '  开发  ', task: {} })
+    expect(created.category).toBe('开发')
+
+    const regrouped = await store.upsert({ id: created.id, name: '分类模板', category: ' 运营 ', task: created.task })
+    expect(regrouped.category).toBe('运营')
+
+    // Empty / whitespace clears the category back to the default bucket.
+    const cleared = await store.upsert({ id: created.id, name: '分类模板', category: '   ', task: created.task })
+    expect(cleared.category).toBeUndefined()
+
+    await expect(store.upsert({ name: '类别太长', category: 'x'.repeat(31), task: {} })).rejects.toThrow('1..30')
+    await expect(store.upsert({ name: '坏类别', category: 42 as unknown as string, task: {} })).rejects.toThrow('must be a string')
+  })
+
+  it('sanitizes a bad stored category to the default bucket instead of rejecting the file', async () => {
+    const { writeFile } = await import('node:fs/promises')
+    const file = join(dir, 'f-templates.json')
+    await writeFile(file, JSON.stringify({ templates: [
+      { id: 'tpl-x', name: '坏类别', category: 42, task: {}, createdAt: 1, updatedAt: 1 },
+      { id: 'tpl-y', name: '超长类别', category: 'x'.repeat(31), task: {}, createdAt: 2, updatedAt: 2 },
+    ] }), 'utf8')
+    const list = await new TemplateStore(file).list()
+    expect(list.find(t => t.id === 'tpl-x')?.category).toBeUndefined()
+    expect(list.find(t => t.id === 'tpl-y')?.category).toBeUndefined()
+    expect(list.find(t => t.id === 'tpl-x')?.name).toBe('坏类别')
   })
 
   it('deletes by id and reports a miss as false', async () => {

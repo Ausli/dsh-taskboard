@@ -18,9 +18,11 @@ import type { TaskTemplateSpec } from './api.ts'
 /** Shipped built-in template locales (mirrors the client i18n LocaleId). */
 export type BuiltinTemplateLocale = 'zh' | 'en'
 
-/** One built-in template's localized name + task spec. */
+/** One built-in template's localized name + category + task spec. */
 export interface BuiltinTemplateContent {
   name: string
+  /** Library category shown in the new-task menu and the template manager. */
+  category: string
   task: TaskTemplateSpec
 }
 
@@ -34,6 +36,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
   zh: {
     'tpl-feature': {
       name: '新增功能',
+      category: '开发',
       task: {
         title: '新增：',
         prompt: [
@@ -49,6 +52,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
     },
     'tpl-bugfix': {
       name: 'Bug 修复',
+      category: '开发',
       task: {
         title: '修复：',
         prompt: [
@@ -64,6 +68,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
     },
     'tpl-release': {
       name: '发布检查',
+      category: '开发',
       task: {
         title: '发布：',
         prompt: '执行发布流程：版本号更新、构建、测试、变更记录，完成后按序交接（不要实际推送/发布，等用户确认）。',
@@ -73,6 +78,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
     },
     'tpl-patrol': {
       name: '例行巡检',
+      category: '运营',
       task: {
         title: '巡检：',
         prompt: [
@@ -88,6 +94,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
   en: {
     'tpl-feature': {
       name: 'New feature',
+      category: 'Development',
       task: {
         title: 'New feature:',
         prompt: [
@@ -103,6 +110,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
     },
     'tpl-bugfix': {
       name: 'Bug fix',
+      category: 'Development',
       task: {
         title: 'Fix:',
         prompt: [
@@ -118,6 +126,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
     },
     'tpl-release': {
       name: 'Release check',
+      category: 'Development',
       task: {
         title: 'Release:',
         prompt: 'Run the release process: bump the version, build, test, and update the changelog, then hand off in order (do not actually push / publish — wait for user confirmation).',
@@ -127,6 +136,7 @@ export const BUILTIN_TEMPLATE_CONTENT: Readonly<Record<BuiltinTemplateLocale, Re
     },
     'tpl-patrol': {
       name: 'Routine patrol',
+      category: 'Operations',
       task: {
         title: 'Patrol:',
         prompt: [

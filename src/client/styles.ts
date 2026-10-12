@@ -807,8 +807,13 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
 }
 .dsh-atb-newmenu-opt:hover { background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,.1)); }
 .dsh-atb-newmenu-sep { height: 1px; margin: 4px 6px; background: var(--dsw-alias-border-l2, rgba(128,128,128,.25)); }
+.dsh-atb-newmenu-catgroup { display: flex; flex-direction: column; }
+.dsh-atb-newmenu-cat {
+  padding: 6px 10px 3px; font-size: 11px; font-weight: 600;
+  color: var(--dsw-alias-label-tertiary, gray); white-space: nowrap;
+}
 
-.dsh-atb-tplm { max-width: 600px; width: min(600px, 92vw); }
+.dsh-atb-tplm { max-width: 640px; width: min(640px, 92vw); }
 .dsh-atb-tplm .dsh-atb-modal-body,
 .dsh-atb-set .dsh-atb-modal-body,
 .dsh-atb-diag .dsh-atb-modal-body,
@@ -816,6 +821,8 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   display: flex; flex-direction: column; gap: 10px;
 }
 .dsh-atb-tplm-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.dsh-atb-tplm-catgroup { display: flex; flex-direction: column; gap: 8px; }
+.dsh-atb-tplm-cathead { font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-tertiary, gray); padding-left: 2px; }
 .dsh-atb-tplm-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: 8px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.25));
@@ -826,6 +833,16 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3));
   background: var(--dsw-alias-bg-layer-1, transparent); color: inherit;
   box-sizing: border-box;
+}
+.dsh-atb-tplm-category {
+  flex: 0 0 110px; width: 110px; max-width: 110px; font-size: 11.5px; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3));
+  background: var(--dsw-alias-bg-layer-1, transparent); color: inherit;
+  box-sizing: border-box;
+}
+.dsh-atb-tplm-catstatic {
+  flex: 0 0 110px; max-width: 110px; font-size: 11px; color: var(--dsw-alias-label-tertiary, gray);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .dsh-atb-tplm-meta {
   flex: 1; min-width: 0; font-size: 11px; color: var(--dsw-alias-label-tertiary, gray);

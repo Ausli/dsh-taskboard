@@ -1078,6 +1078,30 @@ export function normalizeModel(raw: unknown): TaskModel {
 }
 
 // ---------------------------------------------------------------------------
+// template category validation (0.8.8)
+// ---------------------------------------------------------------------------
+
+/** Length cap for a user-defined template category label. */
+export const MAX_TEMPLATE_CATEGORY_LENGTH = 30
+
+/**
+ * Normalize a template category label: trimmed; empty means the default
+ * bucket (undefined, not a stored empty string).
+ * @param raw - the raw category value.
+ * @throws when the value is not a string or exceeds the length cap.
+ */
+export function normalizeTemplateCategory(raw: unknown): string | undefined {
+  if (raw === undefined) return undefined
+  if (typeof raw !== 'string') throw new Error('template category must be a string')
+  const category = raw.trim()
+  if (category.length === 0) return undefined
+  if (category.length > MAX_TEMPLATE_CATEGORY_LENGTH) {
+    throw new Error(`template category must be 1..${MAX_TEMPLATE_CATEGORY_LENGTH} characters`)
+  }
+  return category
+}
+
+// ---------------------------------------------------------------------------
 // checklist + report validation (0.4.0)
 // ---------------------------------------------------------------------------
 
