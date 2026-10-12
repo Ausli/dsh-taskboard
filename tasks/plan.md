@@ -1,56 +1,66 @@
-# Implementation Plan: Workspace Discovery Performance Optimization & Skip Dirs Configuration
+# Implementation Plan: 任务看板“已完成”列收起、按需加载与状态持久化
 
 ## Overview
-彻底解决 `dsh-taskboard` 工作区多仓库扫描打爆 Node.js `libuv` 线程池导致 `/dsh-taskboard/workspaces` 超时及 DSH 全局卡顿的问题。核心策略为：
-1. **分层短路评估（Fast-path Short-circuiting）**：根 Git 仓库默认为单仓（0.001s），跳过盲目深搜；识别 `.svn` 及非 Git 目录直接退出，消除对大型游戏代码库（如 mhxy）数十万小文件的无效遍历。
-2. **扫描器安全加固与超时熔断**：扩展内置 `DEFAULT_SKIP_DIRS`（默认跳过 `.svn`、重型数据目录等），为单项目扫描增加时间预算兜底（fail-soft 截断，防卡死），并发控制保护 libuv 线程池。
-3. **用户自定义跳过目录配置**：在 `BoardSettings` 与看板设置界面提供 `skipDirs` 配置输入，兼顾极端自定义需求。
+在任务看板中为“已完成（done）”列增加整体收起折叠功能，并实现视图状态持久化与后端按需返回数据：
+1. **收起状态持久化**：用户收起或展开“已完成”列的状态持久化到浏览器的 `localStorage`（复用现有 `dsh-taskboard-view-v1` 机制），刷新后保持用户偏好。
+2. **后端按需过滤（性能优化）**：收起状态下，向后端请求 `/dsh-taskboard/state` 时附带 `excludeDone=true` 参数，后端不返回 `done` 状态的数据条目，避免无谓的网络传输与内存开销；同时返回 `doneCount` 总计数值，确保折叠条依然能直观展示完成数量。
+3. **列内竖向折叠与拖拽兼容**：收起时，已完成列收缩为紧凑竖条，显示垂直排布的状态点、文案与计数，并保留作为 Drop Target 的能力，允许拖拽卡片直接放入标记为完成。展开时平滑还原为标准列，并自动拉取全量已完成任务。
 
 ## Architecture Decisions
-1. **快检优先原则（Fast-path First）**：
-   - 根目录为 Git 仓库且无多仓标记时，直接返回 `gitAvailable = true, repoCount = 1`，不再无脑递归遍历 3 层子目录。
-   - 根目录下发现 `.svn` 时，直接判定 `gitAvailable = false, repoCount = 0`，不进入子目录。
-2. **多仓扫描仅在容器工作区（Container Workspaces）按需受控执行**：
-   - 当根目录不是 Git 仓库时，仅在第一层探测到可能存在 Git 子仓的目录下受控浅搜；
-   - 单工作区扫描设定 800ms 超时熔断，超时立即返回已发现结果并记录警告，绝不长时间挂死事件循环。
-   - 34 个工作区并发从 `Promise.all` 改为限流批处理（并发度 ≤ 4），防止瞬时占满 Node.js `UV_THREADPOOL_SIZE`。
-3. **配置系统扩展**：
-   - `BoardSettings` 增加 `skipDirs?: string[]`，支持用户在设置弹窗中输入纯目录名列表（如 `db, npc, prot, taskedit`），与默认跳过名单合并为 `Set<string>`，O(1) 快速排除。
-4. **前端接口弹性与容错**：
-   - 前端 `api.ts` 请求超时适度放宽至 15s，且在异常时平滑降级，不阻断看板主界面加载。
+1. **客户端视图偏好持久化（Local Persistence First）**：
+   - 收起属于当前用户的个人工作流偏好，保存在客户端 `localStorage` 的 `dsh-taskboard-view-v1` 中（字段 `doneCollapsed: boolean`，默认为 `false` 或用户上次的选择），不污染全局共享的 `BoardSettings`。
+2. **条件查询与统计回传（Exclude & Count Protocol）**：
+   - 扩展 `GET /dsh-taskboard/state` 接口：支持查询参数 `?excludeDone=true`。
+   - 当 `excludeDone=true` 时，后端在过滤任务时剔除 `status === 'done'` 的任务，但计算并回传 `doneCount: number`（有效未进回收站的已完成任务总数）。
+   - 当未传或为 false 时，返回全量任务，同时附带 `doneCount`，保持协议前后一致与向后兼容。
+3. **Controller 状态机与按需刷新（State & Lifecycle）**：
+   - `ControllerState` 记录 `doneCollapsed: boolean` 与 `doneCount?: number`。
+   - `refresh()` 根据 `doneCollapsed` 动态决定是否带参请求。
+   - 当用户从收起点击“展开”时，切换状态、写入本地存储，并立即触发一次 `refresh()` 补充拉取所有已完成卡片。
+4. **UI 布局与拖拽体验（Compact Column & Drag-and-Drop）**：
+   - 收起后的已完成列使用 `data-collapsed="true"` 属性，采用紧凑宽度（约 40px~48px），避免看板其余列宽度产生剧烈晃动。
+   - 竖向显示折叠条头部、展开按钮与任务计数，保留 `onDragOver` 和 `onDrop` 事件监听，拖拽卡片至折叠条同样能触发任务流转到 `done`。
 
 ## Task List
 
-### Phase 1: Scanner Hardening & Fast-Path Short-Circuiting (Host Core)
-- [ ] Task 1: 扫描器内置默认过滤与时间预算熔断 (`src/host/repos.ts` & `tests/repos.spec.ts`)
-- [ ] Task 2: 工作区探测分层短路逻辑与并发限流 (`src/host/routes.ts` & `tests/routes.spec.ts`)
+### Phase 1: 协议与后端路由扩展 (Host & Shared API)
+- [x] Task 1: 共享类型扩展与 `/dsh-taskboard/state` 路由支持 `excludeDone` 与 `doneCount` (`src/shared/api.ts`, `src/host/routes.ts` & `tests/routes.spec.ts`)
 
-### Checkpoint: Host Core
-- [ ] 单元测试验证：根 Git 仓单仓快检、SVN 仓秒级跳过、单仓超时熔断、深层目录过滤。
-- [ ] 性能验证：现场 34 个工作区扫描耗时从 60s+ 降至 0.05s 以内。
+### Checkpoint: Host & API
+- [x] 验证后端在 `excludeDone=true` 时返回过滤后的 tasks 以及准确的 `doneCount`。
+- [x] 验证不传参数时仍返回全量 tasks 及 `doneCount`。
+- [x] 单元测试 `tests/routes.spec.ts` 绿灯。
 
-### Phase 2: Configuration & Protocol (Settings Layer)
-- [ ] Task 3: 共享协议与数据校验扩展 (`src/shared/protocol.ts`, `src/host/store.ts` & `tests/protocol.spec.ts`)
-- [ ] Task 4: 国际化中英文字典补充 (`src/client/i18n/zh.ts`, `en.ts` & `tests/i18n.spec.ts`)
+### Phase 2: 客户端 Controller 状态与数据联动 (Client Core)
+- [x] Task 2: 客户端 API 适配、Controller 视图持久化与条件刷新 (`src/client/api.ts`, `src/client/controller.ts` & `tests/client.spec.ts`)
 
-### Checkpoint: Protocol & i18n
-- [ ] 协议校验与字典一致性测试全绿。
+### Checkpoint: Client Core
+- [x] 验证 `localStorage` 正常读写 `doneCollapsed`。
+- [x] 验证收起时发起带参请求，展开时发起全量刷新。
+- [x] 单元测试 `tests/client.spec.ts` 绿灯。
 
-### Phase 3: GUI & Integration (Settings Modal & End-to-End)
-- [ ] Task 5: 看板设置弹窗增加“跳过目录”配置输入与缓存联动 (`src/client/board/SettingsModal.tsx` & tests)
-- [ ] Task 6: 前端超时时间调整与端到端实测验证 (`src/client/api.ts`, 实际 DSH 环境热更新验证)
+### Phase 3: 看板 UI 紧凑竖条交互与样式 (Client UI)
+- [x] Task 3: 看板“已完成”列竖向收起、展开交互与拖拽放置支持 (`src/client/board/TaskBoard.tsx`, `src/client/styles.ts`, `src/client/i18n/zh.ts`, `en.ts`)
+
+### Checkpoint: UI & Interaction
+- [x] 看板已完成列具备收起/展开按钮，收起后呈现规整竖条并展示完成总数。
+- [x] 拖拽卡片至收起竖条可正确移入“已完成”。
+- [x] 中英文字典翻译完整无缺失。
+
+### Phase 4: 端到端验证与构建验收 (Integration & Verification)
+- [x] Task 4: 端到端集成验证与全量回归测试 (`tests/` 全量套件, `npm run typecheck`, `npm run build`)
 
 ### Checkpoint: Complete
-- [ ] 全套测试通过 (`npm run test`)
-- [ ] 生产构建成功 (`npm run build`)
-- [ ] 现场 curl `/dsh-taskboard/workspaces` 实测响应在毫秒级，无超时报错，DSH 页面加载恢复流畅。
+- [x] 全套测试通过 (`npm run test`)
+- [x] 类型检查通过 (`npm run typecheck`)
+- [x] 前后端构建打包成功 (`npm run build`)
 
 ## Risks and Mitigations
 | Risk | Impact | Mitigation |
 | :--- | :--- | :--- |
-| 单仓直接短路可能遗漏特殊的“根也是仓，子也是仓”极端嵌套架构 | Low | 仅在根仓未显式配置多仓模式且第一层未直接显露子仓时快速短路；用户可通过配置明确声明，或仅在需要 mirror 时深搜。 |
-| 用户输入的目录名含有特殊字符或路径斜杠 | Medium | `asBoardSettings` 做清洗：过滤路径分隔符 `/` 和 `\`，仅保留有效目录名，去重并截断至上限 100 项。 |
-| 超时熔断导致极端超大仓库漏算个别子仓库 | Low | 纯容器超大仓库在 800ms 内一般已可完成前 3 层探测；即使用户目录异常庞大，熔断保证了系统可用性（fail-soft 本身就是该模块的立项设计原则）。 |
+| 收起状态下 SSE 推送了新变更，卡片移到 done 后消失但计数未同步 | Medium | 后端 SSE 变更时客户端照常调用 `refresh()`（带 `excludeDone=true`），后端回传最新的 `doneCount`，确保计数实时准确。 |
+| 用户在收起状态下搜索已完成的任务找不到 | Low | 在收起状态下的折叠条中高亮显示计数并提供一键展开提示，避免用户误以为任务丢失。 |
+| 收起为竖条后拖拽放置判定区过窄 | Medium | 竖条整体作为 dragover 和 drop 容器，并设置明显的边框与背景激活色反馈。 |
 
 ## Open Questions
-- 无（所有技术细节与权衡已在调研与方案讨论中明确闭环）。
+- 默认状态：初始无 localStorage 时默认为展开还是收起？（方案定为默认展开 `doneCollapsed: false`，保证新用户首屏可见性，用户一旦点击收起后持久化生效）。

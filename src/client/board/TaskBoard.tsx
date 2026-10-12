@@ -40,6 +40,113 @@ export function filterTasks(state: ControllerState, tasks: TaskRecord[]): TaskRe
   return sorted
 }
 
+/** Sort completed tasks newest-first by update/settle time (fallback to created time, then id). */
+export function sortDoneTasks(tasks: TaskRecord[]): TaskRecord[] {
+  return [...tasks].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || b.id.localeCompare(a.id))
+}
+
+export interface WorkspaceTaskGroup {
+  workspaceId: string | undefined
+  workspaceName: string
+  tasks: TaskRecord[]
+}
+
+/** Resolve display name for a workspace. */
+export function resolveWorkspaceName(
+  workspaceId: string | undefined,
+  workspaces: Array<{ id: string; title?: string; path?: string }>,
+  unassignedLabel: string,
+): string {
+  if (!workspaceId) return unassignedLabel
+  const ws = workspaces.find(w => w.id === workspaceId)
+  if (ws?.title && ws.title.trim().length > 0) return ws.title.trim()
+  if (ws?.path && ws.path.trim().length > 0) {
+    const trimmed = ws.path.trim().replace(/[/\\]+$/, '')
+    const base = trimmed.split(/[/\\]/).filter(Boolean).pop()
+    return base || trimmed
+  }
+  return workspaceId.slice(0, 8)
+}
+
+export type GroupSortOrder = 'name' | 'latestTask' | 'updated' | 'created' | 'urgency'
+
+/** Group a list of tasks by workspace and sort the groups according to the given order. */
+export function groupAndSortTasksByWorkspace(
+  tasks: TaskRecord[],
+  workspaces: Array<{ id: string; title?: string; path?: string }>,
+  unassignedLabel: string,
+  sortOrder: GroupSortOrder = 'name',
+): WorkspaceTaskGroup[] {
+  const map = new Map<string, WorkspaceTaskGroup>()
+
+  for (const task of tasks) {
+    const key = task.workspaceId || ''
+    let group = map.get(key)
+    if (group === undefined) {
+      const name = resolveWorkspaceName(task.workspaceId, workspaces, unassignedLabel)
+      group = {
+        workspaceId: task.workspaceId,
+        workspaceName: name,
+        tasks: [],
+      }
+      map.set(key, group)
+    }
+    group.tasks.push(task)
+  }
+
+  const list = Array.from(map.values())
+
+  // Ensure tasks inside each group are properly sorted according to sortOrder
+  if (sortOrder === 'latestTask' || sortOrder === 'updated') {
+    for (const group of list) {
+      group.tasks.sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || b.id.localeCompare(a.id))
+    }
+  } else if (sortOrder === 'created') {
+    for (const group of list) {
+      group.tasks.sort((a, b) => b.createdAt - a.createdAt || b.updatedAt - a.updatedAt || b.id.localeCompare(a.id))
+    }
+  }
+
+  list.sort((a, b) => {
+    if (sortOrder === 'latestTask' || sortOrder === 'updated') {
+      const aTime = a.tasks.length > 0 ? Math.max(...a.tasks.map(t => t.updatedAt)) : 0
+      const bTime = b.tasks.length > 0 ? Math.max(...b.tasks.map(t => t.updatedAt)) : 0
+      if (bTime !== aTime) return bTime - aTime
+      if (!a.workspaceId && b.workspaceId) return 1
+      if (a.workspaceId && !b.workspaceId) return -1
+      return a.workspaceName.localeCompare(b.workspaceName, undefined, { numeric: true, sensitivity: 'base' })
+    }
+
+    if (sortOrder === 'created') {
+      const aTime = a.tasks.length > 0 ? Math.max(...a.tasks.map(t => t.createdAt)) : 0
+      const bTime = b.tasks.length > 0 ? Math.max(...b.tasks.map(t => t.createdAt)) : 0
+      if (bTime !== aTime) return bTime - aTime
+      if (!a.workspaceId && b.workspaceId) return 1
+      if (a.workspaceId && !b.workspaceId) return -1
+      return a.workspaceName.localeCompare(b.workspaceName, undefined, { numeric: true, sensitivity: 'base' })
+    }
+
+    if (sortOrder === 'urgency') {
+      const aRank = a.tasks.length > 0 ? Math.min(...a.tasks.map(t => URGENCY_RANK[t.urgency])) : 999
+      const bRank = b.tasks.length > 0 ? Math.min(...b.tasks.map(t => URGENCY_RANK[t.urgency])) : 999
+      if (aRank !== bRank) return aRank - bRank
+      const aTime = a.tasks.length > 0 ? Math.max(...a.tasks.map(t => t.updatedAt)) : 0
+      const bTime = b.tasks.length > 0 ? Math.max(...b.tasks.map(t => t.updatedAt)) : 0
+      if (bTime !== aTime) return bTime - aTime
+      if (!a.workspaceId && b.workspaceId) return 1
+      if (a.workspaceId && !b.workspaceId) return -1
+      return a.workspaceName.localeCompare(b.workspaceName, undefined, { numeric: true, sensitivity: 'base' })
+    }
+
+    // Default 'name' sort: alphabetical by workspace name, unassigned pinned to the bottom
+    if (!a.workspaceId && b.workspaceId) return 1
+    if (a.workspaceId && !b.workspaceId) return -1
+    return a.workspaceName.localeCompare(b.workspaceName, undefined, { numeric: true, sensitivity: 'base' })
+  })
+
+  return list
+}
+
 /**
  * The board view root.
  * @param controller - the controller.
@@ -239,13 +346,86 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         : (
           <div className="dsh-atb-columns">
             {MAIN_STATUSES.map(status => {
-              const columnTasks = live.filter(t => t.status === status)
+              const rawColumnTasks = live.filter(t => t.status === status)
               const isDone = status === 'done'
+              const columnTasks = isDone && state.sortBy !== 'title'
+                ? sortDoneTasks(rawColumnTasks)
+                : rawColumnTasks
               const doneLimit = completedDisplayLimitOf(state.ledger.settings)
               const isSearching = state.search.trim().length > 0
               const isFolded = isDone && !isSearching && !doneExpanded && columnTasks.length > doneLimit
               const visibleTasks = isFolded ? columnTasks.slice(0, doneLimit) : columnTasks
               const foldedCount = columnTasks.length - visibleTasks.length
+              const groupSortOrder: GroupSortOrder = isDone
+                ? (state.sortBy === 'title' ? 'name' : 'latestTask')
+                : (state.sortBy === 'updated' ? 'updated'
+                    : state.sortBy === 'created' ? 'created'
+                    : state.sortBy === 'urgency' ? 'urgency'
+                    : 'name')
+              const workspaceGroups = groupAndSortTasksByWorkspace(
+                visibleTasks,
+                state.workspaces,
+                t('board.workspace.unassigned'),
+                groupSortOrder,
+              )
+
+              if (isDone && state.doneCollapsed) {
+                const doneTotalCount = state.doneCount ?? columnTasks.length
+                return (
+                  <div
+                    className="dsh-atb-column"
+                    key={status}
+                    data-collapsed="true"
+                    onDragOver={(e) => {
+                      if (e.dataTransfer.types.includes(DRAG_TYPE)) {
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                        e.currentTarget.dataset.dragover = 'true'
+                      }
+                    }}
+                    onDragLeave={(e) => { delete e.currentTarget.dataset.dragover }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      delete e.currentTarget.dataset.dragover
+                      const id = e.dataTransfer.getData(DRAG_TYPE)
+                      if (id.length === 0) return
+                      const task = state.ledger.tasks.find(t => t.id === id)
+                      if (task === undefined || task.status === status) return
+                      if (!canTransition(task.status, status)) {
+                        showAlert(t('board.drag.forbidden', { from: t(COLUMN_KEYS[task.status]), to: t(COLUMN_KEYS[status]) }))
+                        return
+                      }
+                      void controller.move(id, task.version, status)
+                    }}
+                  >
+                    <div
+                      className="dsh-atb-col-collapsed-bar"
+                      title={t('board.column.expandDone')}
+                      onClick={() => controller.setDoneCollapsed(false)}
+                    >
+                      <button
+                        type="button"
+                        className="dsh-atb-colfoldbtn"
+                        title={t('board.column.expandDone')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          controller.setDoneCollapsed(false)
+                        }}
+                      >
+                        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                          <path d="M6 3.5a.5.5 0 0 1 .854-.354l4 4a.5.5 0 0 1 0 .708l-4 4A.5.5 0 0 1 6 11.5v-8z" />
+                        </svg>
+                      </button>
+                      <div className="dsh-atb-col-collapsed-title">
+                        <span className="dsh-atb-dot" data-status={status} />
+                        <span className="dsh-atb-col-collapsed-text">{t(COLUMN_KEYS[status])}</span>
+                      </div>
+                      <span className="dsh-atb-colcount">{doneTotalCount}</span>
+                    </div>
+                  </div>
+                )
+              }
+
               return (
                 <div
                   className="dsh-atb-column"
@@ -285,17 +465,44 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                         onClick={() => controller.openQueuePanel()}
                       >{t('board.queue.chip', { n: state.queue?.depth ?? 0 })}</button>
                     )}
+                    {isDone && (
+                      <button
+                        type="button"
+                        className="dsh-atb-colfoldbtn"
+                        title={t('board.column.collapseDone')}
+                        onClick={() => controller.setDoneCollapsed(true)}
+                      >
+                        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                          <path d="M10 3.5a.5.5 0 0 0-.854-.354l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .854-.354v-8z" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   <div className="dsh-atb-cards">
-                    {visibleTasks.map(task => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        controller={controller}
-                        draggable
-                        now={now}
-                        onAlert={showAlert}
-                      />
+                    {workspaceGroups.map(group => (
+                      <div className="dsh-atb-ws-group" key={group.workspaceId ?? 'unassigned'}>
+                        <div className="dsh-atb-ws-group-head" title={group.workspaceName}>
+                          <span className="dsh-atb-ws-group-icon">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M1.5 3.5a1 1 0 0 1 1-1h3.5a1 1 0 0 1 .8.4L8 4.5h5.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8z" />
+                            </svg>
+                          </span>
+                          <span className="dsh-atb-ws-group-name">{group.workspaceName}</span>
+                          <span className="dsh-atb-ws-group-count">{group.tasks.length}</span>
+                        </div>
+                        <div className="dsh-atb-ws-group-cards">
+                          {group.tasks.map(task => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              controller={controller}
+                              draggable
+                              now={now}
+                              onAlert={showAlert}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                     {columnTasks.length === 0 && <div className="dsh-atb-empty">{t('board.empty')}</div>}
                     {isDone && !isSearching && columnTasks.length > doneLimit && (
@@ -607,22 +814,49 @@ function SecondaryTab({ controller, tasks }: { controller: BoardController; task
             )}
           </div>
           <div className="dsh-atb-cards">
-            {group.rows.map(task => (
-              group.action && selectingThis ? (
-                <div className="dsh-atb-selrow" key={task.id}>
-                  <input
-                    type="checkbox"
-                    className="dsh-atb-selbox"
-                    checked={selected.has(task.id)}
-                    disabled={batchBusy}
-                    onClick={e => e.stopPropagation()}
-                    onChange={() => toggleSelected(task.id)}
-                  />
-                  <TaskCard task={task} controller={controller} />
-                </div>
-              ) : (
-                <TaskCard key={task.id} task={task} controller={controller} />
+            {(() => {
+              const secSortBy = controller.getSnapshot().sortBy
+              const secGroupSortOrder: GroupSortOrder = secSortBy === 'updated' ? 'updated'
+                : secSortBy === 'created' ? 'created'
+                : secSortBy === 'urgency' ? 'urgency'
+                : 'name'
+              return groupAndSortTasksByWorkspace(
+                group.rows,
+                controller.getSnapshot().workspaces,
+                t('board.workspace.unassigned'),
+                secGroupSortOrder,
               )
+            })().map(wsGroup => (
+              <div className="dsh-atb-ws-group" key={wsGroup.workspaceId ?? 'unassigned'}>
+                <div className="dsh-atb-ws-group-head" title={wsGroup.workspaceName}>
+                  <span className="dsh-atb-ws-group-icon">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M1.5 3.5a1 1 0 0 1 1-1h3.5a1 1 0 0 1 .8.4L8 4.5h5.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8z" />
+                    </svg>
+                  </span>
+                  <span className="dsh-atb-ws-group-name">{wsGroup.workspaceName}</span>
+                  <span className="dsh-atb-ws-group-count">{wsGroup.tasks.length}</span>
+                </div>
+                <div className="dsh-atb-ws-group-cards">
+                  {wsGroup.tasks.map(task => (
+                    group.action && selectingThis ? (
+                      <div className="dsh-atb-selrow" key={task.id}>
+                        <input
+                          type="checkbox"
+                          className="dsh-atb-selbox"
+                          checked={selected.has(task.id)}
+                          disabled={batchBusy}
+                          onClick={e => e.stopPropagation()}
+                          onChange={() => toggleSelected(task.id)}
+                        />
+                        <TaskCard task={task} controller={controller} />
+                      </div>
+                    ) : (
+                      <TaskCard key={task.id} task={task} controller={controller} />
+                    )
+                  ))}
+                </div>
+              </div>
             ))}
             {group.rows.length === 0 && <div className="dsh-atb-empty">{t('board.empty')}</div>}
           </div>

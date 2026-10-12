@@ -1,167 +1,134 @@
-# Tasks: Workspace Discovery Performance Optimization & Skip Dirs Configuration
+# Tasks: 任务看板“已完成”列收起、按需加载与状态持久化
 
-## Task 1: 扫描器内置默认过滤与时间预算熔断
+## Task 1: 共享类型扩展与 `/dsh-taskboard/state` 路由支持 `excludeDone` 与 `doneCount`
 
-**Description:** 在 `src/host/repos.ts` 中，将硬编码的私有常量 `SKIP_DIRS` 扩展为包含 `.svn` 及通用重型目录（`db`, `res`, `assets`, `data`, `logs` 等）的默认名单；为 `findNestedRepos` 增加单个工作区扫描的时间预算（例如 800ms 熔断超时，超时立即 fail-soft 截断返回已发现的仓库列表，防止长时间占用 Node.js 异步 I/O 线程池）；支持传入动态 `extraSkipDirs`。
+**Description:** 在 `src/shared/api.ts` 中扩展 `StateResponse` 接口，增加可选字段 `doneCount?: number`。在 `src/host/routes.ts` 的 `GET /dsh-taskboard/state` 路由处理中，读取查询参数 `excludeDone`（支持 `true` 或 `1`）；在返回响应时，计算有效（未软删除）的已完成任务数量为 `doneCount`；若 `excludeDone` 为真，则在 `ledger.tasks` 中过滤掉 `status === 'done'` 的任务条目，并将 `doneCount` 一并返回给客户端。
 
 **Acceptance criteria:**
-- [ ] 内置跳过名单默认包含 `'.svn'` 及常见大型目录名称
-- [ ] `findNestedRepos` 接受可选的自定义跳过目录集合 `extraSkipDirs?: ReadonlySet<string>`
-- [ ] 单个工作区扫描耗时超过时间预算（800ms）时自动截断退出，不抛异常，fail-soft 返回已收集的结果
-- [ ] 补充/更新单元测试，验证 `.svn` 阻断、自定义 skip 目录阻断以及超时熔断逻辑
+- [x] `StateResponse` 类型声明 `doneCount?: number`
+- [x] `GET /dsh-taskboard/state` 支持 `?excludeDone=true` / `?excludeDone=1` 查询参数
+- [x] 当请求携带 `excludeDone` 时，返回的 `tasks` 数组不包含 `status === 'done'` 的条目，且返回的 `doneCount` 为全部有效已完成任务的总数
+- [x] 当请求未携带 `excludeDone` 时，返回完整的 `tasks` 数组，且同时返回正确的 `doneCount`
+- [x] 在 `tests/routes.spec.ts` 中增加测试用例覆盖上述参数行为与返回字段
 
 **Verification:**
-- [ ] Tests pass: `npx vitest run tests/repos.spec.ts`
-- [ ] Build succeeds: `npm run typecheck`
+- [x] Tests pass: `npx vitest run tests/routes.spec.ts`
+- [x] Build succeeds: `npm run typecheck`
 
 **Dependencies:** None
 
 **Files likely touched:**
-- `src/host/repos.ts`
-- `tests/repos.spec.ts`
+- `src/shared/api.ts`
+- `src/host/routes.ts`
+- `tests/routes.spec.ts`
 
-**Estimated scope:** Small (2 files)
+**Estimated scope:** Small (2-3 files)
 
 ---
 
-## Task 2: 工作区探测分层短路逻辑与并发限流
+## Checkpoint: Host & API
+- [x] Task 1 完成
+- [x] `npx vitest run tests/routes.spec.ts` 全部测试通过
 
-**Description:** 在 `src/host/routes.ts` 的 `workspaceRepos` 逻辑中实现分层短路判断（Fast-path）：
-1. 若根目录检测到是普通 Git 仓库（`rootRepo === true`），且第一层未检测到多仓特征，默认直接认定 `repoCount = 1`，跳过无谓的 3 层子目录深搜；
-2. 若根目录下存在 `.svn` 目录，直接认定 `gitAvailable = false, repoCount = 0`，不进行任何子目录扫描；
-3. 将全量工作区并发从无限制的 `Promise.all` 改为受控批处理（并发度 ≤ 4），避免打满 Node.js `UV_THREADPOOL_SIZE`。
+---
+
+## Task 2: 客户端 API 适配、Controller 视图持久化与条件刷新
+
+**Description:** 在 `src/client/api.ts` 中让 `client.state` 方法支持可选入参 `{ excludeDone?: boolean }`，在发起 fetch 时自动拼接查询参数。在 `src/client/controller.ts` 中：
+1. 扩展 `VIEW_KEY` (`dsh-taskboard-view-v1`) 本地持久化数据结构，支持读取与保存 `doneCollapsed?: boolean`，默认为 `false`；
+2. `ControllerState` 增加 `doneCollapsed: boolean` 与 `doneCount?: number`；
+3. 提供 `setDoneCollapsed(collapsed: boolean)` 控制器方法，更新状态、调用 `persistView()`，并在由收起切换到展开时（`!collapsed`）立即触发 `this.refresh()`；
+4. 在 `refresh()` 方法中，当 `this.state.doneCollapsed` 为 true 时，向后端传递 `{ excludeDone: true }`；并将接口返回的 `doneCount` 存储到 ControllerState。
 
 **Acceptance criteria:**
-- [ ] 单 Git 根仓库命中快检路径，不再触发深度递归扫描
-- [ ] SVN 仓库秒级识别并短路退出，耗时降至 1ms 级别
-- [ ] 多工作区批量检测使用并发限制（concurrency control），消除 libuv 线程池饥饿
-- [ ] 单元测试验证短路逻辑及 `workspaces` 路由返回的数据结构与行为一致
+- [x] `client.state({ excludeDone: true })` 正确请求 `/dsh-taskboard/state?excludeDone=true`
+- [x] `loadView()` 正确从 `localStorage` 中解析 `doneCollapsed` 布尔值
+- [x] `controller.setDoneCollapsed(true)` 更新 `doneCollapsed`，写入 `localStorage`
+- [x] 在收起状态下，`refresh()` 附带 `excludeDone: true` 请求后端；在展开状态或切换为展开时拉取全量数据
+- [x] 在 `tests/client.spec.ts` 中增加测试，验证 `doneCollapsed` 持久化、状态切换与带参刷新行为
 
 **Verification:**
-- [ ] Tests pass: `npx vitest run tests/routes.spec.ts`
-- [ ] Build succeeds: `npm run typecheck`
+- [x] Tests pass: `npx vitest run tests/client.spec.ts`
+- [x] Build succeeds: `npm run typecheck`
 
 **Dependencies:** Task 1
 
 **Files likely touched:**
-- `src/host/routes.ts`
-- `tests/routes.spec.ts`
+- `src/client/api.ts`
+- `src/client/controller.ts`
+- `tests/client.spec.ts`
 
-**Estimated scope:** Medium (2-3 files)
-
----
-
-## Checkpoint: Host Core
-- [ ] Task 1 与 Task 2 完成
-- [ ] `npx vitest run tests/repos.spec.ts tests/routes.spec.ts` 全绿
-- [ ] 现场实测 34 个工作区无缓存探测耗时从 60s+ 降至 0.05s 以内
+**Estimated scope:** Medium (3 files)
 
 ---
 
-## Task 3: 共享协议与数据校验扩展
+## Checkpoint: Client Core
+- [x] Task 1 与 Task 2 完成
+- [x] `npx vitest run tests/routes.spec.ts tests/client.spec.ts` 全部测试通过
 
-**Description:** 在 `src/shared/protocol.ts` 的 `BoardSettings` 类型中增加 `skipDirs?: string[]` 字段，并在 `asBoardSettings` 中实现校验与清洗（去重、去首尾空格、过滤路径斜杠、限制数量 ≤ 100）。在 `src/host/store.ts` 与相关测试中完善支持。
+---
+
+## Task 3: 看板 UI“已完成”列竖向收起、展开交互与拖拽放置支持
+
+**Description:** 在 `src/client/board/TaskBoard.tsx` 中：
+1. 在“已完成”列头部增加收起按钮（带折叠图标与提示文案）；
+2. 当 `state.doneCollapsed` 为 true 时，“已完成”列渲染为紧凑竖条（带有 `data-collapsed="true"` 属性），垂直居中展示状态点、标题与任务总数（优先取 `state.doneCount`，兜底取 `columnTasks.length`），并带有展开按钮；
+3. 收起竖条保留 `onDragOver` 和 `onDrop` 事件处理，支持拖拽任务卡片直接放入标记为已完成；
+4. 在 `src/client/styles.ts` 中增加 `.dsh-atb-column[data-collapsed="true"]` 相关的紧凑竖条布局、垂直文本、悬浮与拖拽高亮样式；
+5. 在 `src/client/i18n/zh.ts` 和 `en.ts` 中补充收起与展开相关的国际化键（如 `board.column.collapseDone`, `board.column.expandDone`）。
 
 **Acceptance criteria:**
-- [ ] `BoardSettings` 支持可选字段 `skipDirs?: string[]`
-- [ ] `asBoardSettings` 严格校验输入数组，非法元素被清洗，保留合法目录名，单项无 `/` 或 `\`
-- [ ] 单元测试验证 `asBoardSettings` 对 `skipDirs` 的合法处理与边界异常抛出
+- [x] “已完成”列头部具备收起按钮，点击后触发 `controller.setDoneCollapsed(true)`
+- [x] 收起后列宽变为紧凑竖条（约 40-48px），垂直显示“已完成 (N)”及展开按钮，点击可展开
+- [x] 任务卡片拖拽到收起的已完成竖条能够触发高亮，并在 drop 时成功调用 `controller.move(id, version, 'done')`
+- [x] 中英文字典翻译完整，`tests/i18n.spec.ts` 测试通过
 
 **Verification:**
-- [ ] Tests pass: `npx vitest run tests/protocol.spec.ts`
-- [ ] Build succeeds: `npm run typecheck`
+- [x] Tests pass: `npx vitest run tests/client.spec.ts tests/i18n.spec.ts`
+- [x] Build succeeds: `npm run typecheck`
 
-**Dependencies:** None
-
-**Files likely touched:**
-- `src/shared/protocol.ts`
-- `tests/protocol.spec.ts`
-
-**Estimated scope:** Small (2 files)
-
----
-
-## Task 4: 国际化中英文字典补充
-
-**Description:** 在中英文字典中增加设置弹窗中“跳过目录”配置项相关的文案键，包括配置区域标题、描述说明、占位符示例、重置按钮文案等。
-
-**Acceptance criteria:**
-- [ ] `src/client/i18n/zh.ts` 补充跳过目录相关的翻译键
-- [ ] `src/client/i18n/en.ts` 补充对应英文翻译键
-- [ ] `tests/i18n.spec.ts` 中英文键一致性测试通过
-
-**Verification:**
-- [ ] Tests pass: `npx vitest run tests/i18n.spec.ts`
-- [ ] Build succeeds: `npm run typecheck`
-
-**Dependencies:** None
+**Dependencies:** Task 2
 
 **Files likely touched:**
+- `src/client/board/TaskBoard.tsx`
+- `src/client/styles.ts`
 - `src/client/i18n/zh.ts`
 - `src/client/i18n/en.ts`
-- `tests/i18n.spec.ts`
+- `tests/client.spec.ts`
 
-**Estimated scope:** Small (3 files)
-
----
-
-## Checkpoint: Protocol & i18n
-- [ ] Task 3 与 Task 4 完成
-- [ ] `npx vitest run tests/protocol.spec.ts tests/i18n.spec.ts` 全绿
-- [ ] `npm run typecheck` 无类型错误
+**Estimated scope:** Medium (4-5 files)
 
 ---
 
-## Task 5: 看板设置弹窗增加“跳过目录”配置输入与缓存联动
+## Checkpoint: UI & Interaction
+- [x] Task 1、Task 2、Task 3 全部完成
+- [x] 看板在收起与展开之间平滑切换，拖拽放置正常运作，国际化全覆盖
 
-**Description:** 在 `src/client/board/SettingsModal.tsx` 中增加“跳过扫描目录（Skip Directories）”输入区。支持逗号或换行分隔的目录名输入，绑定草稿状态，在提交保存时传给 controller 并持久化。服务端在设置变更时自动清理 `repoScanner` 缓存。
+---
+
+## Task 4: 端到端验证与全量回归测试
+
+**Description:** 运行完整的测试套件、TypeScript 编译检查和生产环境打包构建，确保没有引入任何回归问题，并验证在 SSE 变更推送与搜索状态下的协同行为。
 
 **Acceptance criteria:**
-- [ ] 设置弹窗渲染“跳过扫描目录”配置区域，展示当前已配置项及内置默认项提示
-- [ ] 支持用户编辑、保存及恢复默认
-- [ ] 保存设置后，服务端正确更新并重置扫描缓存
-- [ ] 对应单元测试通过
+- [x] 全部单元测试与回归测试通过（无新增失败）
+- [x] TypeScript 类型检查 0 报错（`npm run typecheck`）
+- [x] 生产打包构建成功（`npm run build`）
 
 **Verification:**
-- [ ] Tests pass: `npx vitest run tests/default-settings.spec.ts`
-- [ ] Build succeeds: `npm run typecheck`
+- [x] Tests pass: `npm run test`
+- [x] Typecheck: `npm run typecheck`
+- [x] Build: `npm run build`
 
-**Dependencies:** Task 2, Task 3, Task 4
-
-**Files likely touched:**
-- `src/client/board/SettingsModal.tsx`
-- `tests/default-settings.spec.ts`
-
-**Estimated scope:** Small (2 files)
-
----
-
-## Task 6: 前端超时时间调整与端到端实测验证
-
-**Description:** 在 `src/client/api.ts` 中将请求超时时间 `TIMEOUT_MS` 从 10s 适当放宽至 15s；在 DSH 真实运行环境下热重载/重启并验证 `/dsh-taskboard/workspaces` 实际加载耗时与稳定性。
-
-**Acceptance criteria:**
-- [ ] `src/client/api.ts` 超时阈值优化为 15,000ms
-- [ ] 生产打包构建成功 (`npm run build`)
-- [ ] 真实环境中通过 curl 与浏览器访问，工作区接口毫秒级返回，无任何 timeout 报错
-
-**Verification:**
-- [ ] Build succeeds: `npm run build`
-- [ ] E2E check: `curl -s -w "\ntime_total: %{time_total}s\n" http://127.0.0.1:3080/dsh-taskboard/workspaces` 耗时 < 0.1s
-- [ ] DSH Web 页面加载流畅，看板无报错卡顿
-
-**Dependencies:** Task 1 至 Task 5
+**Dependencies:** Task 1, Task 2, Task 3
 
 **Files likely touched:**
-- `src/client/api.ts`
-- 构建打包产物 (`lib/`)
+- 无新文件，校验全工程构建产物
 
-**Estimated scope:** Small (1-2 files)
+**Estimated scope:** Small
 
 ---
 
 ## Checkpoint: Complete
-- [ ] 所有单元测试通过 (`npm run test`)
-- [ ] 生产构建成功 (`npm run build`)
-- [ ] `/dsh-taskboard/workspaces` 接口在无缓存状态下秒开（< 0.05s）
-- [ ] 确认 DSH 整体运行流畅，无其他接口排队超时
+- [x] 所有 Task 与 Checkpoint 达成
+- [x] 交付准备就绪，可以安全移交用户或实施

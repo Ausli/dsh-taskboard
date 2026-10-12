@@ -975,6 +975,65 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  it('controller: doneCollapsed view persistence and conditional state refetch', async () => {
+    localStorage.clear()
+    const { BoardController } = await import('../src/client/controller.ts')
+    const stateCalls: Array<{ excludeDone?: boolean } | undefined> = []
+    const client = {
+      state: async (opts?: { excludeDone?: boolean }) => {
+        stateCalls.push(opts)
+        return {
+          schemaVersion: 1,
+          revision: 1,
+          tasks: opts?.excludeDone ? [] : [{ id: 't-done', status: 'done' as const }],
+          doneCount: 1,
+        }
+      },
+      workspaces: async () => [],
+      stream: () => () => {},
+    }
+
+    const controller = new BoardController(client as never)
+    // 默认未折叠，初始值为 false
+    expect(controller.getSnapshot().doneCollapsed).toBe(false)
+
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+    expect(stateCalls.length).toBeGreaterThan(0)
+    expect(stateCalls[stateCalls.length - 1]?.excludeDone).toBe(false)
+    expect(controller.getSnapshot().ledger.tasks.length).toBe(1)
+    expect(controller.getSnapshot().doneCount).toBe(1)
+
+    // 切换为收起：应更新状态并持久化到 localStorage
+    stateCalls.length = 0
+    controller.setDoneCollapsed(true)
+    expect(controller.getSnapshot().doneCollapsed).toBe(true)
+    const persisted = JSON.parse(localStorage.getItem('dsh-taskboard-view-v1')!) as { doneCollapsed?: boolean }
+    expect(persisted.doneCollapsed).toBe(true)
+
+    // 在收起状态下刷新：应传递 excludeDone: true
+    await controller.refresh()
+    expect(stateCalls[stateCalls.length - 1]?.excludeDone).toBe(true)
+    expect(controller.getSnapshot().ledger.tasks.length).toBe(0)
+    expect(controller.getSnapshot().doneCount).toBe(1)
+
+    // 实例化新控制器：自动从 localStorage 读取到 doneCollapsed: true
+    const newController = new BoardController(client as never)
+    expect(newController.getSnapshot().doneCollapsed).toBe(true)
+
+    // 展开：自动触发一次 refresh，拉取全量任务
+    stateCalls.length = 0
+    controller.setDoneCollapsed(false)
+    expect(controller.getSnapshot().doneCollapsed).toBe(false)
+    await new Promise(r => setTimeout(r, 10))
+    expect(stateCalls[stateCalls.length - 1]?.excludeDone).toBe(false)
+    expect(controller.getSnapshot().ledger.tasks.length).toBe(1)
+
+    controller.dispose()
+    newController.dispose()
+    localStorage.clear()
+  })
+
   it('checklist editor: template prefill, add/remove rows, create submits texts, edit submits items', async () => {
     localStorage.clear()
     const React = await import('react')
@@ -2598,6 +2657,286 @@ describe('client half', () => {
     await new Promise(r => setTimeout(r, 10))
     expect(controller.getSnapshot().selectedId).toBeUndefined()
     expect(host.querySelector('.dsh-atb-detailpanel')).toBeNull()
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
+  it('TaskBoard: done column collapse toggle and collapsed vertical bar rendering', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskBoard } = await import('../src/client/board/TaskBoard.tsx')
+
+    const taskReview = {
+      id: 't-review', title: 'Task Review', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'in_review' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const taskDone = {
+      id: 't-done', title: 'Task Done', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'done' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+
+    let movedTo: string | undefined
+    const client = {
+      state: async (opts?: { excludeDone?: boolean }) => ({
+        schemaVersion: 1,
+        revision: 1,
+        tasks: opts?.excludeDone ? [taskReview] : [taskReview, taskDone],
+        doneCount: 1,
+      }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      move: async (id: string, body: any) => {
+        movedTo = body.status
+        return { task: { ...taskReview, status: body.status } }
+      },
+      stream: () => () => {},
+    }
+
+    const controller = new BoardController(client as never)
+    controller.start()
+    controller.openBoard()
+    await new Promise(r => setTimeout(r, 10))
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    root.render(React.createElement(TaskBoard, { controller }))
+    await new Promise(r => setTimeout(r, 10))
+
+    // 1. 默认展开状态：已完成列有卡片，且没有 data-collapsed
+    let collapsedCol = host.querySelector('.dsh-atb-column[data-collapsed="true"]')
+    expect(collapsedCol).toBeNull()
+
+    // 找到已完成列的收起按钮并点击
+    const foldBtns = host.querySelectorAll<HTMLButtonElement>('.dsh-atb-colfoldbtn')
+    expect(foldBtns.length).toBeGreaterThan(0)
+    foldBtns[0]!.click()
+    await new Promise(r => setTimeout(r, 10))
+
+    // 2. 收起状态：渲染 data-collapsed="true" 竖条，展示总数
+    expect(controller.getSnapshot().doneCollapsed).toBe(true)
+    collapsedCol = host.querySelector('.dsh-atb-column[data-collapsed="true"]')
+    expect(collapsedCol).not.toBeNull()
+    const countEl = collapsedCol!.querySelector('.dsh-atb-colcount')
+    expect(countEl?.textContent).toBe('1')
+
+    // 3. 测试向收起竖条 dragover 与 drop，流转为 done
+    const dragData: Record<string, string> = { 'application/x-dsh-atb-task': 't-review' }
+    const dt = {
+      types: ['application/x-dsh-atb-task'],
+      getData: (k: string) => dragData[k] ?? '',
+      dropEffect: 'none',
+    }
+    const dragOverEvt = new Event('dragover', { bubbles: true, cancelable: true })
+    Object.defineProperty(dragOverEvt, 'dataTransfer', { value: dt })
+    collapsedCol!.dispatchEvent(dragOverEvt)
+    expect(dragOverEvt.defaultPrevented).toBe(true)
+
+    let dropFired = false
+    collapsedCol!.addEventListener('drop', (e: any) => {
+      dropFired = true
+      const id = e.dataTransfer?.getData('application/x-dsh-atb-task')
+      expect(id).toBe('t-review')
+    })
+
+    const dropEvt = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(dropEvt, 'dataTransfer', { value: dt })
+    collapsedCol!.dispatchEvent(dropEvt)
+    expect(dropFired).toBe(true)
+    await new Promise(r => setTimeout(r, 50))
+    expect(movedTo).toBe('done')
+
+    // 4. 点击展开按钮恢复展开
+    const expandBtn = collapsedCol!.querySelector<HTMLButtonElement>('.dsh-atb-colfoldbtn')
+    expect(expandBtn).not.toBeNull()
+    expandBtn!.click()
+    await new Promise(r => setTimeout(r, 10))
+    expect(controller.getSnapshot().doneCollapsed).toBe(false)
+    expect(host.querySelector('.dsh-atb-column[data-collapsed="true"]')).toBeNull()
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
+  it('workspace grouping and sorting: groupAndSortTasksByWorkspace groups and sorts by workspace name', async () => {
+    const { groupAndSortTasksByWorkspace, resolveWorkspaceName } = await import('../src/client/board/TaskBoard.tsx')
+
+    const workspaces = [
+      { id: 'ws-z', title: 'Zebra Project', path: '/home/code/zebra' },
+      { id: 'ws-a', title: 'Alpha Project', path: '/home/code/alpha' },
+      { id: 'ws-p', title: '', path: '/home/code/path-only-project' },
+    ]
+
+    expect(resolveWorkspaceName('ws-a', workspaces, '未分配')).toBe('Alpha Project')
+    expect(resolveWorkspaceName('ws-p', workspaces, '未分配')).toBe('path-only-project')
+    expect(resolveWorkspaceName('ws-unknown', workspaces, '未分配')).toBe('ws-unkno')
+    expect(resolveWorkspaceName(undefined, workspaces, '未分配')).toBe('未分配')
+
+    const tasks = [
+      { id: 't-z1', workspaceId: 'ws-z', title: 'Z1' } as any,
+      { id: 't-a1', workspaceId: 'ws-a', title: 'A1' } as any,
+      { id: 't-none', workspaceId: undefined, title: 'None' } as any,
+      { id: 't-a2', workspaceId: 'ws-a', title: 'A2' } as any,
+      { id: 't-p1', workspaceId: 'ws-p', title: 'P1' } as any,
+    ]
+
+    const groups = groupAndSortTasksByWorkspace(tasks, workspaces, '未分配工作区')
+    expect(groups.map(g => g.workspaceName)).toEqual([
+      'Alpha Project',
+      'path-only-project',
+      'Zebra Project',
+      '未分配工作区',
+    ])
+
+    // Preserves order within each group
+    expect(groups[0]!.tasks.map(t => t.id)).toEqual(['t-a1', 't-a2'])
+    expect(groups[1]!.tasks.map(t => t.id)).toEqual(['t-p1'])
+    expect(groups[2]!.tasks.map(t => t.id)).toEqual(['t-z1'])
+    expect(groups[3]!.tasks.map(t => t.id)).toEqual(['t-none'])
+  })
+
+  it('session identification & card badge: resolves session and renders badge with jump on click', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskCard, resolveTaskSessionId } = await import('../src/client/board/TaskCard.tsx')
+    const { createSessionJumper } = await import('../src/client/session-jump.ts')
+
+    // 1. resolveTaskSessionId checks various sources
+    const tRunning = { executions: [{ outcome: 'running', sessionId: 's-running' }] } as any
+    expect(resolveTaskSessionId(tRunning)).toBe('s-running')
+
+    const tRecent = { executions: [{ outcome: 'succeeded', sessionId: 's-old' }, { outcome: 'failed', sessionId: 's-recent' }] } as any
+    expect(resolveTaskSessionId(tRecent)).toBe('s-recent')
+
+    const tClaimed = { executions: [], claimedBy: 'session-claimed-123' } as any
+    expect(resolveTaskSessionId(tClaimed)).toBe('session-claimed-123')
+
+    const tAutoReuse = { executions: [], execution: { autoReuseSessionId: 's-autoreuse' }, createdBy: { kind: 'user' } } as any
+    expect(resolveTaskSessionId(tAutoReuse)).toBe('s-autoreuse')
+
+    const tAgentCreated = { executions: [], execution: {}, createdBy: { kind: 'agent', sessionId: 's-agent-creator' } } as any
+    expect(resolveTaskSessionId(tAgentCreated)).toBe('s-agent-creator')
+
+    const tNone = { executions: [], execution: {}, createdBy: { kind: 'user' } } as any
+    expect(resolveTaskSessionId(tNone)).toBeUndefined()
+
+    // 2. TaskCard renders session badge and clicking it jumps to session
+    const opened: string[] = []
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [],
+      stream: () => () => {},
+    }
+    const controller = new BoardController(client as never)
+    controller.installSessionTitles(() => ({
+      'session-taskboard-9f0d99': { displayTitle: '优化展示会话' },
+    }))
+    controller.installSessionJumper(createSessionJumper({
+      getSessions: () => ({
+        open: (id: string) => { opened.push(id) },
+        refresh: async () => {},
+        list: { getSnapshot: () => ({ byId: { 'session-taskboard-9f0d99': {} } }) },
+      } as never),
+      getWorkspaces: () => ({ list: { getSnapshot: () => ({ archivedSessionIds: [] }) } } as never),
+    }))
+
+    const taskWithSession = {
+      id: 't-card-sess', title: 'Task with session', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, status: 'in_progress' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'agent' as const, sessionId: 'session-taskboard-9f0d99' },
+      updatedBy: { kind: 'agent' as const, sessionId: 'session-taskboard-9f0d99' },
+      comments: [], executions: [],
+    }
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    root.render(React.createElement(TaskCard, { task: taskWithSession, controller }))
+    await new Promise(r => setTimeout(r, 10))
+
+    const sessionBadge = host.querySelector<HTMLElement>('.dsh-atb-badge[data-kind="session"]')
+    expect(sessionBadge).not.toBeNull()
+    expect(sessionBadge?.textContent).toContain('9f0d99')
+    expect(sessionBadge?.getAttribute('title')).toContain('优化展示会话')
+    expect(sessionBadge?.getAttribute('title')).toContain('session-taskboard-9f0d99')
+
+    // Click on badge directly opens session
+    sessionBadge!.click()
+    await new Promise(r => setTimeout(r, 20))
+    expect(opened).toEqual(['session-taskboard-9f0d99'])
+
+    root.unmount()
+    host.remove()
+    controller.dispose()
+    localStorage.clear()
+  })
+
+  it('TaskBoard renders workspace groups with headers in status columns', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskBoard } = await import('../src/client/board/TaskBoard.tsx')
+
+    const taskA1 = {
+      id: 't-a1', title: 'Task A1', description: '', prompt: '', workspaceId: 'ws-b',
+      urgency: 'normal' as const, status: 'todo' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const taskA2 = {
+      id: 't-a2', title: 'Task A2', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'urgent' as const, status: 'todo' as const, blocked: false,
+      execution: { mode: 'claim' as const }, version: 1, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+
+    const client = {
+      state: async () => ({
+        schemaVersion: 1, revision: 1,
+        tasks: [taskA1, taskA2],
+      }),
+      workspaces: async () => [
+        { id: 'ws-b', title: 'Beta Repo', path: '/p/b', sessionCount: 0 },
+        { id: 'ws-a', title: 'Alpha Repo', path: '/p/a', sessionCount: 0 },
+      ],
+      stream: () => () => {},
+    }
+
+    const controller = new BoardController(client as never)
+    controller.start()
+    controller.openBoard()
+    await new Promise(r => setTimeout(r, 20))
+
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    root.render(React.createElement(TaskBoard, { controller }))
+    await new Promise(r => setTimeout(r, 20))
+
+    // Todo column should contain 2 workspace groups: Alpha Repo, Beta Repo (sorted alphabetically)
+    const todoCol = host.querySelectorAll('.dsh-atb-column')[1]!
+    const groupHeads = todoCol.querySelectorAll('.dsh-atb-ws-group-head')
+    expect(groupHeads.length).toBe(2)
+    expect(groupHeads[0]!.querySelector('.dsh-atb-ws-group-name')?.textContent).toBe('Alpha Repo')
+    expect(groupHeads[1]!.querySelector('.dsh-atb-ws-group-name')?.textContent).toBe('Beta Repo')
 
     root.unmount()
     host.remove()

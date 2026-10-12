@@ -46,7 +46,7 @@ export type QueueSummary = {
   maxConcurrent: number
 }
 
-export type StateResponse = TaskLedger & { capabilities?: { archiveSessions: boolean }; queue?: QueueSummary }
+export type StateResponse = TaskLedger & { capabilities?: { archiveSessions: boolean }; queue?: QueueSummary; doneCount?: number }
 
 /** Result of dropping every durable queue entry (board queue panel). */
 export type QueueClearResponse = { cleared: number }

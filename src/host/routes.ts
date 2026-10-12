@@ -454,7 +454,19 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
         if (pathname === `${ROUTE_PREFIX}/state`) {
           await store.load()
           const ledger = store.snapshot()
-          json(res, { ok: true, value: { ...ledger, capabilities: { archiveSessions: typeof workspaces.archiveSession === 'function' }, queue: queueSummary(ledger) } })
+          const excludeDone = url.searchParams.get('excludeDone') === 'true' || url.searchParams.get('excludeDone') === '1'
+          const doneCount = ledger.tasks.filter(t => t.status === 'done' && t.trashedAt === undefined).length
+          const tasks = excludeDone ? ledger.tasks.filter(t => t.status !== 'done') : ledger.tasks
+          json(res, {
+            ok: true,
+            value: {
+              ...ledger,
+              tasks,
+              doneCount,
+              capabilities: { archiveSessions: typeof workspaces.archiveSession === 'function' },
+              queue: queueSummary(ledger),
+            },
+          })
           return
         }
         if (pathname === `${ROUTE_PREFIX}/workspaces`) {

@@ -43,6 +43,8 @@ import type { TaskStore } from './store.ts'
  * non-empty string that is not `'plugin'`), declared here so the taskboard owns
  * its attribution instead of using the retired wrapper.
  */
+import type {} from '@deepseek-ai/dsh-llm'
+
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'dsh-taskboard': { kind: 'dsh-taskboard' }

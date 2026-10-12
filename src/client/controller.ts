@@ -30,19 +30,20 @@ export type SortBy = 'default' | 'updated' | 'urgency' | 'created' | 'title'
 const VIEW_KEY = 'dsh-taskboard-view-v1'
 
 /** Load the persisted view state (never throws; fresh on any parse error). */
-function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortBy } {
+function loadView(): { workspaceId?: string; urgencies: Urgency[]; sortBy: SortBy; doneCollapsed: boolean } {
   try {
     const raw = localStorage.getItem(VIEW_KEY)
-    if (raw === null) return { urgencies: [], sortBy: 'default' }
-    const parsed = JSON.parse(raw) as { workspaceId?: string; urgencies?: Urgency[]; sortBy?: SortBy }
+    if (raw === null) return { urgencies: [], sortBy: 'default', doneCollapsed: false }
+    const parsed = JSON.parse(raw) as { workspaceId?: string; urgencies?: Urgency[]; sortBy?: SortBy; doneCollapsed?: boolean }
     const sortBy = parsed.sortBy === 'updated' || parsed.sortBy === 'urgency' || parsed.sortBy === 'created' || parsed.sortBy === 'title' ? parsed.sortBy : 'default'
     return {
       workspaceId: typeof parsed.workspaceId === 'string' ? parsed.workspaceId : undefined,
       urgencies: Array.isArray(parsed.urgencies) ? parsed.urgencies.filter(u => u === 'urgent' || u === 'normal' || u === 'relaxed') : [],
       sortBy,
+      doneCollapsed: parsed.doneCollapsed === true,
     }
   } catch {
-    return { urgencies: [], sortBy: 'default' }
+    return { urgencies: [], sortBy: 'default', doneCollapsed: false }
   }
 }
 
@@ -58,6 +59,10 @@ export interface ControllerState {
   search: string
   /** Column sort order. */
   sortBy: SortBy
+  /** Completed (done) column collapsed state; persisted in localStorage. */
+  doneCollapsed: boolean
+  /** Total count of live completed tasks reported by the host. */
+  doneCount?: number
   /** Selected task id (detail view); undefined closes the detail. */
   selectedId?: string
   /** Task form modal visible (create when editingId is unset). */
@@ -102,6 +107,7 @@ function initialState(): ControllerState {
     filters: { workspaceId: view.workspaceId, urgencies: view.urgencies },
     search: '',
     sortBy: view.sortBy,
+    doneCollapsed: view.doneCollapsed,
     composerOpen: false,
     secondaryOpen: false,
     diagOpen: false,
@@ -193,7 +199,7 @@ export class BoardController {
         // frame.
         for (let round = 0; round < 3; round++) {
           const [ledgerResult, workspacesResult] = await Promise.allSettled([
-            Promise.resolve().then(() => this.client.state()),
+            Promise.resolve().then(() => this.client.state({ excludeDone: this.state.doneCollapsed })),
             Promise.resolve().then(() => this.client.workspaces()),
           ])
           const patch: Partial<ControllerState> = {}
@@ -208,6 +214,7 @@ export class BoardController {
             Object.assign(patch, {
               archiveSessionsSupported: ledger.capabilities?.archiveSessions === true,
               ledger,
+              doneCount: typeof ledger.doneCount === 'number' ? ledger.doneCount : ledger.tasks.filter(t => t.status === 'done' && t.trashedAt === undefined).length,
               queue: ledger.queue,
               selectedId: selected === undefined ? undefined : this.state.selectedId,
             })
@@ -301,6 +308,16 @@ export class BoardController {
     this.persistView()
   }
 
+  /** Set the completed (done) column collapsed state (persisted). */
+  setDoneCollapsed(collapsed: boolean): void {
+    const prev = this.state.doneCollapsed
+    this.setState({ doneCollapsed: collapsed })
+    this.persistView()
+    if (prev && !collapsed) {
+      void this.refresh()
+    }
+  }
+
   /** Write the current view state to localStorage (best effort). */
   private persistView(): void {
     try {
@@ -308,6 +325,7 @@ export class BoardController {
         workspaceId: this.state.filters.workspaceId,
         urgencies: this.state.filters.urgencies,
         sortBy: this.state.sortBy,
+        doneCollapsed: this.state.doneCollapsed,
       }))
     } catch { /* storage unavailable (private mode etc.) — view just won't persist */ }
   }
@@ -355,6 +373,13 @@ export class BoardController {
 
   installSessionTitles(reader: () => Record<string, { displayTitle?: string; title?: string }>): void {
     this.sessionTitles = reader
+  }
+
+  /** Get the display title of a session if known. */
+  getSessionTitle(sessionId: string | undefined): string | undefined {
+    if (sessionId === undefined) return undefined
+    const titles = this.sessionTitles?.() ?? {}
+    return titles[sessionId]?.displayTitle ?? titles[sessionId]?.title
   }
 
   /** T13: formal installers for the composer catalog faces (was a monkeypatch from the client entry). */
