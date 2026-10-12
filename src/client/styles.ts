@@ -834,12 +834,26 @@ color: var(--dsw-alias-state-business-primary, #3e63dd);
   background: var(--dsw-alias-bg-layer-1, transparent); color: inherit;
   box-sizing: border-box;
 }
+.dsh-atb-tplm-catwrap { position: relative; flex: 0 0 110px; width: 110px; max-width: 110px; }
 .dsh-atb-tplm-category {
-  flex: 0 0 110px; width: 110px; max-width: 110px; font-size: 11.5px; padding: 5px 8px; border-radius: 7px;
+  width: 100%; max-width: 100%; font-size: 11.5px; padding: 5px 8px; border-radius: 7px;
   border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3));
   background: var(--dsw-alias-bg-layer-1, transparent); color: inherit;
   box-sizing: border-box;
 }
+/* Suggestion dropdown for the category input: always full list, never filtered. */
+.dsh-atb-tplm-catpop {
+  position: absolute; top: calc(100% + 3px); left: 0; z-index: 6; min-width: 140px; max-height: 180px; overflow-y: auto;
+  display: flex; flex-direction: column; padding: 4px; border-radius: 8px;
+  background: var(--dsw-alias-bg-overlay, #fff); color: var(--dsw-alias-label-primary, inherit);
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.25));
+  box-shadow: var(--dsw-shadow-lv3, 0 12px 32px rgba(0,0,0,.18));
+}
+.dsh-atb-tplm-catopt {
+  border: none; background: none; text-align: left; cursor: pointer; padding: 5px 8px;
+  font-size: 11.5px; color: inherit; border-radius: 6px; white-space: nowrap;
+}
+.dsh-atb-tplm-catopt:hover { background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,.1)); }
 .dsh-atb-tplm-catstatic {
   flex: 0 0 110px; max-width: 110px; font-size: 11px; color: var(--dsw-alias-label-tertiary, gray);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

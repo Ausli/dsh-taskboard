@@ -1310,7 +1310,6 @@ describe('client half', () => {
     expect(tplmCats).toEqual(['▍服务 (1)', '▍其他 (1)'])
     expect(host.querySelectorAll('.dsh-atb-tplm-category').length).toBe(1)
     expect(host.querySelector<HTMLElement>('.dsh-atb-tplm-catstatic')!.textContent).toBe('其他')
-    expect(Array.from(host.querySelectorAll('#dsh-atb-template-categories option')).map(o => (o as HTMLOptionElement).value)).toEqual(['服务'])
 
     const nameInput = host.querySelector<HTMLInputElement>('.dsh-atb-tplm-name')!
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
@@ -1322,8 +1321,25 @@ describe('client half', () => {
     await new Promise(r => setTimeout(r, 10))
     expect(upserts[0]).toMatchObject({ id: 'tpl-2', name: '改名模板' })
 
-    // Category edit on the same custom row reaches the upsert with the new label.
+    // Category suggestions: focusing the input opens the FULL list (0.8.8;
+    // React 18 delegates onFocus through bubbling focusin, which jsdom does
+    // not emit on .focus() — dispatch it explicitly).
     const catInput = host.querySelector<HTMLInputElement>('.dsh-atb-tplm-category')!
+    catInput.dispatchEvent(new Event('focusin', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 10))
+    const catOptions = (): string[] => Array.from(host.querySelectorAll<HTMLElement>('.dsh-atb-tplm-catopt')).map(b => b.textContent!)
+    expect(catOptions()).toEqual(['服务'])
+    // Typing must NOT filter the suggestion list.
+    setter?.call(catInput, '服务B')
+    catInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 10))
+    expect(catOptions()).toEqual(['服务'])
+    // Picking a suggestion fills the input verbatim.
+    ;(host.querySelector<HTMLElement>('.dsh-atb-tplm-catopt')!).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 10))
+    expect(catInput.value).toBe('服务')
+
+    // Keep editing after the pick; the save reaches the upsert with the label.
     setter?.call(catInput, '服务B')
     catInput.dispatchEvent(new Event('input', { bubbles: true }))
     await new Promise(r => setTimeout(r, 10))

@@ -3,7 +3,7 @@
  * stored task templates. Templates live host-side (side file next to the
  * ledger) and prefill the create form from the + 新建任务 ▼ dropdown. Rows
  * group by category (0.8.8); built-in rows show a read-only category while
- * custom rows edit theirs inline with datalist suggestions.
+ * custom rows edit theirs inline with an unfiltered suggestion dropdown.
  *
  * @module dsh-taskboard/client/board/TemplateManager
  */
@@ -16,6 +16,59 @@ import { URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
 import { localizeBuiltinCategory, localizeBuiltinName, localizeBuiltinTask } from '../i18n/templates.ts'
 import { categoryLabel, groupTemplatesByCategory, templateCategoryOf, templateCategoryOptions } from '../template-categories.ts'
+
+/**
+ * Free-text category input with a suggestion dropdown that always lists every
+ * existing category — typing never filters the list; picking an option fills
+ * the input verbatim (the native datalist's as-you-type filtering is exactly
+ * what this replaces).
+ */
+function CategorySuggest({ value, options, placeholder, ariaLabel, onPick, onEnter, onChange }: {
+  value: string
+  options: readonly string[]
+  placeholder: string
+  ariaLabel: string
+  onPick: (option: string) => void
+  onEnter: () => void
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="dsh-atb-tplm-catwrap">
+      <input
+        className="dsh-atb-tplm-category"
+        value={value}
+        maxLength={30}
+        spellCheck={false}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') onEnter()
+          if (e.key === 'Escape') setOpen(false)
+        }}
+      />
+      {open && options.length > 0 && (
+        <div className="dsh-atb-tplm-catpop">
+          {options.map(option => (
+            <button
+              key={option}
+              type="button"
+              className="dsh-atb-tplm-catopt"
+              // Pick before a mousedown-driven blur can close the list.
+              onMouseDown={e => { e.preventDefault(); onPick(option) }}
+              onClick={() => setOpen(false)}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 /**
  * The template manager modal.
@@ -84,11 +137,7 @@ export function TemplateManager({ controller }: { controller: BoardController })
           {state.templates.length === 0
             ? <div className="dsh-atb-empty2">{t('tpl.empty')}</div>
             : (
-                <>
-                  <datalist id="dsh-atb-template-categories">
-                    {templateCategoryOptions(state.templates).map(option => <option key={option} value={option} />)}
-                  </datalist>
-                  <div className="dsh-atb-tplm-list">
+                <div className="dsh-atb-tplm-list">
                     {groupTemplatesByCategory(state.templates).map(group => (
                       <div key={group.category ?? '\u0000'} className="dsh-atb-tplm-catgroup">
                         <div className="dsh-atb-tplm-cathead">▍{categoryLabel(group.category, t)} ({group.templates.length})</div>
@@ -108,18 +157,14 @@ export function TemplateManager({ controller }: { controller: BoardController })
                             {tpl.builtin === true
                               ? <span className="dsh-atb-tplm-catstatic" title={t('tpl.builtin')}>{categoryLabel(templateCategoryOf(tpl), t)}</span>
                               : (
-                                  <input
-                                    className="dsh-atb-tplm-category"
+                                  <CategorySuggest
                                     value={categoryEdits[tpl.id] ?? (templateCategoryOf(tpl) ?? '')}
-                                    maxLength={30}
-                                    spellCheck={false}
-                                    list="dsh-atb-template-categories"
+                                    options={templateCategoryOptions(state.templates)}
                                     placeholder={t('tpl.category.placeholder')}
-                                    aria-label={t('tpl.category.aria', { name: localizeBuiltinName(tpl) })}
-                                    onChange={e => setCategoryEdits(prev => ({ ...prev, [tpl.id]: e.target.value }))}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') save(tpl, nameOf(tpl))
-                                    }}
+                                    ariaLabel={t('tpl.category.aria', { name: localizeBuiltinName(tpl) })}
+                                    onPick={option => setCategoryEdits(prev => ({ ...prev, [tpl.id]: option }))}
+                                    onChange={value => setCategoryEdits(prev => ({ ...prev, [tpl.id]: value }))}
+                                    onEnter={() => save(tpl, nameOf(tpl))}
                                   />
                                 )}
                             <span
@@ -169,8 +214,7 @@ export function TemplateManager({ controller }: { controller: BoardController })
                         ))}
                       </div>
                     ))}
-                  </div>
-                </>
+                </div>
               )}
         </div>
         <div className="dsh-atb-modal-foot">
