@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { TaskStore } from '../src/host/store.ts'
-import { ExternalSessionSyncService } from '../src/host/session-sync.ts'
+import { ExternalSessionSyncService, extractSessionTitle } from '../src/host/session-sync.ts'
 import type { EventsFace } from '../src/host/execution.ts'
 import type { WorkspaceFace } from '../src/host/tools.ts'
 
@@ -342,6 +342,142 @@ describe('ExternalSessionSyncService (0.5.4)', () => {
     expect(updated.claimedBy).toBe('sess-active-1')
     expect(updated.executions).toHaveLength(2)
     expect(updated.executions[1]!.outcome).toBe('running')
+
+    service.dispose()
+  })
+
+  it('extractSessionTitle extracts titles from various session shapes', () => {
+    expect(extractSessionTitle(undefined)).toBeUndefined()
+    expect(extractSessionTitle(null)).toBeUndefined()
+    expect(extractSessionTitle({})).toBeUndefined()
+
+    // Direct title or displayTitle
+    expect(extractSessionTitle({ title: '直接标题' })).toBe('直接标题')
+    expect(extractSessionTitle({ displayTitle: '展示标题' })).toBe('展示标题')
+
+    // Projections
+    expect(extractSessionTitle({ projections: { title: '投影标题' } })).toBe('投影标题')
+
+    // Header or meta
+    expect(extractSessionTitle({ header: { title: '头部标题' } })).toBe('头部标题')
+    expect(extractSessionTitle({ meta: { title: '元数据标题' } })).toBe('元数据标题')
+
+    // Event history in reverse
+    expect(extractSessionTitle({
+      events: [
+        { type: 'session/title', data: { title: '第一轮旧标题' } },
+        { type: 'user/message', data: { content: 'hello' } },
+        { type: 'session/title', data: { title: '第二轮最新标题' } },
+      ],
+    })).toBe('第二轮最新标题')
+
+    // snapshotEvents method
+    expect(extractSessionTitle({
+      snapshotEvents: () => [
+        { type: 'session/title', data: { title: '快照方法标题' } },
+      ],
+    })).toBe('快照方法标题')
+  })
+
+  it('pre-populates real session title on turn/start when capturing existing session', async () => {
+    const h = await createHarness({ syncExternalSessions: true })
+
+    const sessionWithHistory = {
+      id: 'session-bb30a25e-test',
+      snapshotEvents: () => [
+        { type: 'user/message', data: { content: '原始业务需求' } },
+        { type: 'session/title', data: { title: '检查装备穿戴指引触发' } },
+      ],
+    }
+
+    // Capture starts at Turn 2, passing the session with existing title
+    await h.emit(
+      'session-bb30a25e-test',
+      { type: 'turn/start', data: { turn: 2 } },
+      sessionWithHistory as never,
+    )
+
+    let tasks = h.store.snapshot().tasks
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]!.title).toBe('检查装备穿戴指引触发')
+
+    // Turn 2 user message arrives (e.g. slash command or short instruction)
+    await h.emit(
+      'session-bb30a25e-test',
+      { type: 'user/message', data: { content: '/planning-and-task-breakdown 规划一下如何改动。' } },
+    )
+
+    // Title should NOT be overwritten by subsequent turn command
+    tasks = h.store.snapshot().tasks
+    expect(tasks[0]!.title).toBe('检查装备穿戴指引触发')
+
+    h.dispose()
+  })
+
+  it('scanActiveSessions reconciles placeholder or auto-created title with live session title', async () => {
+    const store = new TaskStore({ file: join(dir, `led-recon-${Math.random().toString(36).slice(2)}.json`) })
+    await store.mutate('settings-updated', (ledger) => {
+      ledger.settings = { syncExternalSessions: true }
+      return []
+    })
+
+    const liveSessions = new Map<string, Record<string, unknown>>()
+    const service = new ExternalSessionSyncService({
+      store,
+      workspaces: fakeWorkspaces(),
+      events: { onSessionEvent: () => () => {} },
+      sessions: {
+        get: (id) => liveSessions.get(id),
+        list: () => [...liveSessions.values()],
+      },
+      now: () => 5000,
+      scanIntervalMs: 0,
+    })
+
+    // Setup an existing task with placeholder title "会话 bb30a25e" created by agent
+    await store.mutate('task-created', (ledger) => {
+      ledger.tasks.push({
+        id: 't-recon-1',
+        title: '会话 bb30a25e',
+        description: '',
+        prompt: '',
+        workspaceId: 'ws-a',
+        urgency: 'normal',
+        status: 'in_progress',
+        blocked: false,
+        execution: { mode: 'claim' },
+        isolation: 'none',
+        claimedBy: 'sess-recon-1',
+        version: 1,
+        createdAt: 1000,
+        updatedAt: 1000,
+        createdBy: { kind: 'agent', sessionId: 'sess-recon-1' },
+        updatedBy: { kind: 'agent', sessionId: 'sess-recon-1' },
+        comments: [],
+        executions: [
+          {
+            id: 'e-1',
+            sessionId: 'sess-recon-1',
+            trigger: 'manual',
+            startedAt: 1000,
+            outcome: 'running',
+          },
+        ],
+      })
+      return ledger.tasks
+    })
+
+    // Session has real title in its projections
+    liveSessions.set('sess-recon-1', {
+      id: 'sess-recon-1',
+      state: 'running',
+      projections: { title: '检查装备穿戴指引触发' },
+    })
+
+    await service.scanActiveSessions()
+
+    const task = store.snapshot().tasks[0]!
+    expect(task.title).toBe('检查装备穿戴指引触发')
 
     service.dispose()
   })
