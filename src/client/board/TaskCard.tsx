@@ -150,33 +150,6 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
             {t(OUTCOME_KEYS[last.outcome] ?? last.outcome)}
           </span>
         )}
-        {targetSessionId !== undefined && (
-          <button
-            type="button"
-            className="dsh-atb-card-session"
-            title={t('card.session.jumpTitle', { id: targetSessionId })}
-            onClick={(e) => {
-              e.stopPropagation()
-              void controller.openSession(targetSessionId).then(result => {
-                if (result === 'missing') {
-                  const msg = t('card.session.missing', { id: shortId(targetSessionId) })
-                  if (onAlert !== undefined) onAlert(msg)
-                  else alert(msg)
-                } else if (result === 'archived') {
-                  const msg = t('card.session.archived', { id: shortId(targetSessionId) })
-                  if (onAlert !== undefined) onAlert(msg)
-                  else alert(msg)
-                } else if (result === 'unavailable') {
-                  const msg = t('card.session.unavailable', { id: targetSessionId })
-                  if (onAlert !== undefined) onAlert(msg)
-                  else alert(msg)
-                }
-              })
-            }}
-          >
-            🤖 {shortId(targetSessionId)} ↗
-          </button>
-        )}
         {task.comments.length > 0 && <span>💬 {task.comments.length}</span>}
         {task.trashedAt !== undefined && <span className="dsh-atb-badge" data-kind="trashed">{t('card.badge.pendingPurge')}</span>}
         <span style={{ marginLeft: 'auto' }}>{fmtTime(task.updatedAt)}</span>

@@ -1987,7 +1987,7 @@ describe('client half', () => {
     root.unmount()
     host.remove()
 
-    // 2. TaskCard with live session has .dsh-atb-card-session button
+    // 2. TaskCard does NOT render .dsh-atb-card-session button anymore (double-click replaces it)
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
@@ -1999,22 +1999,18 @@ describe('client half', () => {
       onAlert: (msg: string) => alerts.push(msg),
     }))
     await new Promise(r => setTimeout(r, 10))
+    expect(host.querySelector('.dsh-atb-card-session')).toBeNull()
 
-    const sessionBtn = host.querySelector<HTMLButtonElement>('.dsh-atb-card-session')!
-    expect(sessionBtn).not.toBeNull()
-    expect(sessionBtn.textContent).toContain('t-live-1')
-    expect(sessionBtn.textContent).toContain('↗')
-
-    // Click on the session button: jumps to session, closes board, and does NOT select the card
-    sessionBtn.click()
+    // Double-click jumps to session
+    const cardEl = host.querySelector<HTMLElement>('.dsh-atb-card')!
+    cardEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
     await new Promise(r => setTimeout(r, 20))
     expect(opened).toEqual(['session-taskboard-t-live-11112222'])
     expect(controller.getSnapshot().boardOpen).toBe(false)
-    expect(controller.getSnapshot().selectedId).toBeUndefined()
     root.unmount()
     host.remove()
 
-    // 3. TaskCard with archived session alerts when clicked
+    // 3. TaskCard with archived session alerts on double-click
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
@@ -2025,13 +2021,13 @@ describe('client half', () => {
       onAlert: (msg: string) => alerts.push(msg),
     }))
     await new Promise(r => setTimeout(r, 10))
-    const archBtn = host.querySelector<HTMLButtonElement>('.dsh-atb-card-session')!
-    expect(archBtn).not.toBeNull()
-    archBtn.click()
+    expect(host.querySelector('.dsh-atb-card-session')).toBeNull()
+    const archCard = host.querySelector<HTMLElement>('.dsh-atb-card')!
+    archCard.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
     await new Promise(r => setTimeout(r, 20))
     expect(alerts).toHaveLength(1)
     expect(alerts[0]).toContain('该会话已归档')
-    expect(controller.getSnapshot().boardOpen).toBe(true) // board stays open on non-opened result
+    expect(controller.getSnapshot().boardOpen).toBe(true)
     root.unmount()
     host.remove()
 
