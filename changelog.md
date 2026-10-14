@@ -1,5 +1,13 @@
 # 更新日志 / Changelog
 
+### 0.8.9
+
+- **列内滚动钉住项目分组头（[PR #47](https://github.com/cloader/dsh-taskboard/pull/47)）**：看板列内容较多出现滚动时，项目分组头（工作区名称行）以 sticky 方式钉在列顶不再随卡片滚走，长列阅读时分组始终有标签；分组头底色改为三层叠加的完全不透明填充（看板底色 + 列底色 + 行底色），卡片从下方滑过不会透过标签渗出文字。感谢 [@MoruTeaven](https://github.com/MoruTeaven) 的贡献。
+
+**English:**
+
+- **Sticky project group headers while a column scrolls ([PR #47](https://github.com/cloader/dsh-taskboard/pull/47))**: when a column's card list scrolls, the project group header (the workspace name row) now pins to the top of the column instead of riding away with the cards, keeping long columns labelled while you read. The header fill becomes an opaque three-layer stack (board base + column inset + row tint) so cards sliding underneath never bleed through the label. Thanks to [@MoruTeaven](https://github.com/MoruTeaven) for the contribution.
+
 ### 0.8.8
 
 - **任务模板分类**：模板获得自定义类别（1..30 字符），「+ 新建任务 ▼」菜单与「管理模板」弹窗按类别分组展示，未分类模板归入「其他」组并固定排在最后。管理弹窗中自建模板可行内编辑类别——建议下拉始终列出全部分类、不随输入过滤，输入框靠近弹窗底部时自动向上弹出；回车或「改名」按钮一并保存改名与类别。内置模板自带类别（开发 / 运维）并跟随界面语言显示。类别随模板保存在模板文件中，既有数据无需迁移。

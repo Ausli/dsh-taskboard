@@ -130,6 +130,7 @@ Available in any session. Project boundary: only sessions belonging to the task'
 - Tasks belong to projects: claiming validates session ownership — no snatching across projects
 - Three-color urgency (urgent red / normal purple / relaxed blue) with filtering and color bars; search (title / ID) and in-column sorting; filters and sorting persist
 - Status-colored dots on column headers: backlog gray / todo blue / in-progress orange / in-review purple / done green / deleted red
+- **Sticky project group headers while a column scrolls (0.8.9)**: on long columns the project group header (workspace name row) pins to the top instead of riding away with the cards; its fill is an opaque three-layer stack, so cards sliding underneath never bleed through
 - **Done column folding and display limit (0.8.8)**: Board Settings can cap how many completed cards a column renders (default 50, 10–500; search exempts the cap); the done column collapses into a compact strip (state persisted, still a drop target) while the host omits done tasks from `/state` and reports the total; completed tasks sort newest-first, grouped per workspace, easing render lag on large histories
 - Create/edit modal: project, model (with reasoning effort), urgency, execution mode, cron with live validation & next-run preview, periodic completion and independent session policies, isolation toggle, checklist editor
 - Detail panel: status transitions (*done* is human-only; completing with unchecked items asks for confirmation and shows the count), agent/user comment thread, execution history (newest first; session IDs open the execution session on click; deleted/archived targets get distinct notices), stop execution, worktree isolation block (branch / commits / change stats / merge & cleanup), execution report block, acceptance checklist block; clicking any blank board area outside the panel dismisses it (0.8.8)
@@ -240,6 +241,10 @@ node tests/manual-git-e2e.mjs   # real-git end-to-end manual test (full worktree
 `npm run build` cleans stale files from `lib/` before generating the host ESM modules and the client registration module, `lib/client.js`. `npm run build:host` and `npm run build:client` rebuild only their respective half and preserve the other half's output; run the full build before publishing.
 
 ## Changelog
+
+### 0.8.9
+
+- **Sticky project group headers while a column scrolls ([PR #47](https://github.com/cloader/dsh-taskboard/pull/47))**: the project group header (workspace name row) pins to the top of the column while the card list scrolls, keeping long columns labelled while you read; the header fill is an opaque three-layer stack (board base + column inset + row tint) so cards sliding underneath never bleed through the label. Thanks to [@MoruTeaven](https://github.com/MoruTeaven) for the contribution.
 
 ### 0.8.8
 
