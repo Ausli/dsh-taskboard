@@ -476,6 +476,8 @@ export const zh = {
   'board.done.showing': '（展示最近 {n} 条）',
   'board.column.collapseDone': '收起「已完成」列',
   'board.column.expandDone': '展开「已完成」列',
+  'board.workspace.expand': '展开 {name} 的任务',
+  'board.workspace.collapse': '收起 {name} 的任务',
   'board.workspace.unassigned': '未分配工作区',
   'card.badge.permReadOnly': '🔒 仅查看',
   'card.badge.permReadOnlyTitle': '权限：仅可查看',

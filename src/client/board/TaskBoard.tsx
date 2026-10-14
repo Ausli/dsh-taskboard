@@ -487,7 +487,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   <div className="dsh-atb-cards">
                     {workspaceGroups.map(group => (
                       <div className="dsh-atb-ws-group" key={group.workspaceId ?? 'unassigned'}>
-                        <div className="dsh-atb-ws-group-head" title={group.workspaceName}>
+                        <button type="button" className="dsh-atb-ws-group-head"
+                          aria-expanded={!controller.isWorkspaceGroupCollapsed(status, group.workspaceId)}
+                          aria-label={t(controller.isWorkspaceGroupCollapsed(status, group.workspaceId) ? 'board.workspace.expand' : 'board.workspace.collapse', { name: group.workspaceName })}
+                          title={group.workspaceName}
+                          onClick={() => controller.toggleWorkspaceGroup(status, group.workspaceId)}>
+                          <svg className="dsh-atb-ws-group-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 3 5 5-5 5" /></svg>
                           <span className="dsh-atb-ws-group-icon">
                             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                               <path d="M1.5 3.5a1 1 0 0 1 1-1h3.5a1 1 0 0 1 .8.4L8 4.5h5.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8z" />
@@ -495,8 +500,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                           </span>
                           <span className="dsh-atb-ws-group-name">{group.workspaceName}</span>
                           <span className="dsh-atb-ws-group-count">{group.tasks.length}</span>
-                        </div>
-                        <div className="dsh-atb-ws-group-cards">
+                        </button>
+                        <div className="dsh-atb-ws-group-cards" hidden={controller.isWorkspaceGroupCollapsed(status, group.workspaceId)}>
                           {group.tasks.map(task => (
                             <TaskCard
                               key={task.id}
@@ -834,7 +839,12 @@ function SecondaryTab({ controller, tasks }: { controller: BoardController; task
               )
             })().map(wsGroup => (
               <div className="dsh-atb-ws-group" key={wsGroup.workspaceId ?? 'unassigned'}>
-                <div className="dsh-atb-ws-group-head" title={wsGroup.workspaceName}>
+                <button type="button" className="dsh-atb-ws-group-head"
+                          aria-expanded={!controller.isWorkspaceGroupCollapsed(group.dot, wsGroup.workspaceId)}
+                          aria-label={t(controller.isWorkspaceGroupCollapsed(group.dot, wsGroup.workspaceId) ? 'board.workspace.expand' : 'board.workspace.collapse', { name: wsGroup.workspaceName })}
+                          title={wsGroup.workspaceName}
+                          onClick={() => controller.toggleWorkspaceGroup(group.dot, wsGroup.workspaceId)}>
+                          <svg className="dsh-atb-ws-group-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m5 3 5 5-5 5" /></svg>
                   <span className="dsh-atb-ws-group-icon">
                     <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M1.5 3.5a1 1 0 0 1 1-1h3.5a1 1 0 0 1 .8.4L8 4.5h5.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8z" />
@@ -842,8 +852,8 @@ function SecondaryTab({ controller, tasks }: { controller: BoardController; task
                   </span>
                   <span className="dsh-atb-ws-group-name">{wsGroup.workspaceName}</span>
                   <span className="dsh-atb-ws-group-count">{wsGroup.tasks.length}</span>
-                </div>
-                <div className="dsh-atb-ws-group-cards">
+                </button>
+                <div className="dsh-atb-ws-group-cards" hidden={controller.isWorkspaceGroupCollapsed(group.dot, wsGroup.workspaceId)}>
                   {wsGroup.tasks.map(task => (
                     group.action && selectingThis ? (
                       <div className="dsh-atb-selrow" key={task.id}>

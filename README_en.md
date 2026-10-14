@@ -130,6 +130,7 @@ Available in any session. Project boundary: only sessions belonging to the task'
 - Tasks belong to projects: claiming validates session ownership — no snatching across projects
 - Three-color urgency (urgent red / normal purple / relaxed blue) with filtering and color bars; search (title / ID) and in-column sorting; filters and sorting persist
 - Status-colored dots on column headers: backlog gray / todo blue / in-progress orange / in-review purple / done green / deleted red
+- **Collapsible project groups (0.8.10)**: click a project name row to fold its cards while keeping the name and count visible; each column/project pair folds independently and restores after refresh; supported on the main board and in canceled, archived, and trashed columns, with sticky headers and keyboard access preserved
 - **Sticky project group headers while a column scrolls (0.8.9)**: on long columns the project group header (workspace name row) pins to the top instead of riding away with the cards; its fill is an opaque three-layer stack, so cards sliding underneath never bleed through
 - **Done column folding and display limit (0.8.8)**: Board Settings can cap how many completed cards a column renders (default 50, 10–500; search exempts the cap); the done column collapses into a compact strip (state persisted, still a drop target) while the host omits done tasks from `/state` and reports the total; completed tasks sort newest-first, grouped per workspace, easing render lag on large histories
 - Create/edit modal: project, model (with reasoning effort), urgency, execution mode, cron with live validation & next-run preview, periodic completion and independent session policies, isolation toggle, checklist editor
@@ -241,6 +242,10 @@ node tests/manual-git-e2e.mjs   # real-git end-to-end manual test (full worktree
 `npm run build` cleans stale files from `lib/` before generating the host ESM modules and the client registration module, `lib/client.js`. `npm run build:host` and `npm run build:client` rebuild only their respective half and preserve the other half's output; run the full build before publishing.
 
 ## Changelog
+
+### 0.8.10
+
+- **Collapsible project groups**: click a project name row to collapse or expand its task cards in the current status column. A chevron indicates the expanded state while the project name and task count stay visible. Each column/project pair folds independently, with the state saved in the current browser and restored after a page refresh. Available on the main board and in canceled, archived, and trashed columns; sticky group headers remain in place. Supports Tab focus and Enter/Space activation, with localized Chinese and English action labels. Folding only changes card visibility, leaving task records and statuses unchanged.
 
 ### 0.8.9
 

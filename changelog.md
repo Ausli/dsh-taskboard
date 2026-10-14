@@ -1,5 +1,13 @@
 # 更新日志 / Changelog
 
+### 0.8.10
+
+- **项目分组折叠**：点击项目名称行即可收起或展开该项目在当前状态列中的任务卡片；左侧箭头显示展开状态，项目名称和任务数量始终保留。同一项目在不同状态列中独立折叠，折叠状态保存在当前浏览器中，刷新页面后恢复。主看板与取消／归档／回收站均支持，保留项目分组头的滚动吸顶效果；支持 Tab 聚焦及 Enter／空格切换，操作提示跟随中英文界面。仅影响卡片显示，不改变任务状态或数据。
+
+**English:**
+
+- **Collapsible project groups**: click a project name row to collapse or expand its task cards in the current status column. A chevron indicates the expanded state while the project name and task count stay visible. Each column/project pair folds independently, with the state saved in the current browser and restored after a page refresh. Available on the main board and in canceled, archived, and trashed columns; sticky group headers remain in place. Supports Tab focus and Enter/Space activation, with localized Chinese and English action labels. Folding only changes card visibility, leaving task records and statuses unchanged.
+
 ### 0.8.9
 
 - **列内滚动钉住项目分组头（[PR #47](https://github.com/cloader/dsh-taskboard/pull/47)）**：看板列内容较多出现滚动时，项目分组头（工作区名称行）以 sticky 方式钉在列顶不再随卡片滚走，长列阅读时分组始终有标签；分组头底色改为三层叠加的完全不透明填充（看板底色 + 列底色 + 行底色），卡片从下方滑过不会透过标签渗出文字。感谢 [@MoruTeaven](https://github.com/MoruTeaven) 的贡献。

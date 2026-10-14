@@ -57,7 +57,7 @@ function makeTask(id: string, workspaceId: string): TaskRecord {
   }
 }
 
-async function renderBoard(tasks: TaskRecord[]): Promise<HTMLElement> {
+async function renderBoard(tasks: TaskRecord[], onController?: (controller: BoardController) => void): Promise<HTMLElement> {
   const controller = new BoardController({
     state: async () => ({ schemaVersion: 1, revision: 1, tasks }),
     workspaces: async () => [
@@ -67,6 +67,7 @@ async function renderBoard(tasks: TaskRecord[]): Promise<HTMLElement> {
     stream: () => () => {},
   } as never)
   controller.start()
+  onController?.(controller)
   cleanups.push(() => controller.dispose())
   await waitFor(() => controller.getSnapshot().workspaces.length === 2)
 
@@ -79,6 +80,53 @@ async function renderBoard(tasks: TaskRecord[]): Promise<HTMLElement> {
 }
 
 describe('sticky project group headers', () => {
+  it('collapses only the selected column/project, preserves counts, and restores after reload', async () => {
+    const host = await renderBoard([
+      makeTask('a-1', 'ws-a'), makeTask('b-1', 'ws-b'),
+      { ...makeTask('a-2', 'ws-a'), status: 'in_progress' },
+    ])
+    await waitFor(() => host.querySelectorAll('.dsh-atb-ws-group-head').length === 3)
+    const heads = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-ws-group-head'))
+    const alpha = heads.find(head => head.title === 'Alpha Repo')!
+    const cards = alpha.nextElementSibling as HTMLElement
+    expect(alpha.tagName).toBe('BUTTON')
+    expect(alpha.getAttribute('aria-expanded')).toBe('true')
+    alpha.click()
+    await waitFor(() => alpha.getAttribute('aria-expanded') === 'false')
+    expect(cards.hidden).toBe(true)
+    expect(alpha.querySelector('.dsh-atb-ws-group-count')?.textContent).toBe('1')
+    for (const head of heads.filter(head => head !== alpha)) {
+      expect(head.getAttribute('aria-expanded')).toBe('true')
+      expect((head.nextElementSibling as HTMLElement).hidden).toBe(false)
+    }
+    const reloaded = await renderBoard([makeTask('a-1', 'ws-a')])
+    await waitFor(() => reloaded.querySelector('.dsh-atb-ws-group-head') !== null)
+    expect(reloaded.querySelector('.dsh-atb-ws-group-head')?.getAttribute('aria-expanded')).toBe('false')
+    alpha.click()
+    await waitFor(() => !cards.hidden)
+    expect(alpha.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('supports secondary columns and unassigned projects without changing task records', async () => {
+    let controller!: BoardController
+    const task = { ...makeTask('unassigned', ''), status: 'archived' as const }
+    const host = await renderBoard([task], value => { controller = value })
+    controller.toggleSecondary()
+    await waitFor(() => host.querySelector('.dsh-atb-ws-group-head') !== null)
+    const head = host.querySelector<HTMLButtonElement>('.dsh-atb-ws-group-head')!
+    head.click()
+    await waitFor(() => head.getAttribute('aria-expanded') === 'false')
+    expect((head.nextElementSibling as HTMLElement).hidden).toBe(true)
+    expect(controller.isWorkspaceGroupCollapsed('archived', '')).toBe(true)
+    expect(controller.isWorkspaceGroupCollapsed('todo', '')).toBe(false)
+    expect(controller.getSnapshot().ledger.tasks).toEqual([task])
+    controller.toggleSecondary()
+    controller.toggleSecondary()
+    await waitFor(() => host.querySelector('.dsh-atb-ws-group-head')?.getAttribute('aria-expanded') === 'false')
+    head.click()
+    await waitFor(() => !controller.isWorkspaceGroupCollapsed('archived', ''))
+  })
+
   it('pins .dsh-atb-ws-group-head to the top of its card scroller', async () => {
     const host = await renderBoard([makeTask('a-1', 'ws-a'), makeTask('a-2', 'ws-a'), makeTask('b-1', 'ws-b')])
     await waitFor(() => host.querySelectorAll('.dsh-atb-column').length === 5)

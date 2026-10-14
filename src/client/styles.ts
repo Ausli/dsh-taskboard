@@ -251,6 +251,7 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
 .dsh-atb-ws-group { display: flex; flex-direction: column; gap: 6px; }
 .dsh-atb-ws-group + .dsh-atb-ws-group { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--dsw-border, rgba(128,128,128,.2)); }
 .dsh-atb-ws-group-head {
+  border: none; width: 100%; box-sizing: border-box; font-family: inherit; text-align: left; cursor: pointer;
   display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 6px;
   font-size: 11.5px; font-weight: 600; color: var(--dsw-text-secondary, inherit);
   /* Sticky project header: the column head above never scrolls (it
@@ -268,6 +269,10 @@ body[data-ds-dark-theme] .dsh-atb-modal-body select option {
   user-select: none;
 }
 .dsh-atb-ws-group-icon { display: inline-flex; align-items: center; justify-content: center; opacity: .8; line-height: 1; }
+.dsh-atb-ws-group-head:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #3e63dd); outline-offset: -2px; }
+.dsh-atb-ws-group-chevron { flex-shrink: 0; }
+.dsh-atb-ws-group-head[aria-expanded="true"] .dsh-atb-ws-group-chevron { transform: rotate(90deg); }
+.dsh-atb-ws-group-cards[hidden] { display: none; }
 .dsh-atb-ws-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dsh-atb-ws-group-count {
   font-size: 10px; font-weight: 500; padding: 0.5px 5px; border-radius: 10px;
