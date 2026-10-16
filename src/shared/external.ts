@@ -13,6 +13,7 @@ export type ExternalConnection = {
   itemTypes: string[]; mappings: Array<{ projectId: string; workspaceId: string }>
   settings: Record<string, string>
   since: string; intervalMinutes: number
+  importStatus?: 'backlog' | 'todo'
 }
 export type ExternalConfig = ExternalConnection & { credentials: Record<string, string> }
 export type ExternalProject = { id: string; name: string }

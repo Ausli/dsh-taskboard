@@ -218,7 +218,7 @@ export class ExternalSyncService {
             if (!task) {
               if (item.closed || !(item.assignees ?? [item.assignedTo]).includes(config.account)) continue
               const created: TaskRecord = { id: newTaskId(), title: item.title, description: item.description, urgency: item.urgency,
-                workspaceId, prompt: '', status: 'backlog', blocked: false, execution: { mode: 'claim' },
+                workspaceId, prompt: '', status: config.importStatus ?? 'backlog', blocked: false, execution: { mode: 'claim' },
                 isolation: defaultIsolationOf(ledger.settings), permission: defaultPermissionOf(ledger.settings),
                 model: ledger.settings?.defaultModel, presetId: ledger.settings?.defaultPresetId,
                 version: 1, createdAt: result.at, updatedAt: result.at, createdBy: { kind: 'user' }, updatedBy: { kind: 'user' },

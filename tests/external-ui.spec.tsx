@@ -91,10 +91,11 @@ describe('provider-driven external UI', () => {
     expect(calls.at(-1)).toMatchObject({ path: '/dsh-taskboard/external/projects', body: { provider: 'tapd', authMode: 'bearer', account: 'alice', mappings: [], settings: { companyId: '999' } } })
     const mappingInput = [...host.querySelectorAll<HTMLInputElement>('input')].find(i => i.hasAttribute('list'))!
     await update(mappingInput, '123')
-    await choose(selects()[2]!, 'ws')
+    await choose(selects()[2]!, 'todo')
+    await choose(selects()[3]!, 'ws')
     await act(async () => { buttonByText(host, /保存连接|Save connection/).click() })
     await waitFor(() => calls.some(c => c.path.endsWith('/config')))
-    expect(calls.at(-1)!.body).toMatchObject({ provider: 'tapd', authMode: 'bearer', credentials: { accessToken: 'private-access-token' }, itemTypes: ['bug'], mappings: [{ projectId: '123', workspaceId: 'ws' }] })
+    expect(calls.at(-1)!.body).toMatchObject({ provider: 'tapd', authMode: 'bearer', importStatus: 'todo', credentials: { accessToken: 'private-access-token' }, itemTypes: ['bug'], mappings: [{ projectId: '123', workspaceId: 'ws' }] })
     await waitFor(() => host.querySelector<HTMLInputElement>('input[type=password]')?.value === '')
     expect(host.textContent).not.toContain('private-access-token')
     await choose(selects()[0]!, 'zentao')

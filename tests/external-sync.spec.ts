@@ -45,6 +45,19 @@ describe('sync service', () => {
     await service.configure({ baseUrl: 'https://zentao.test', account: 'alice', credentials: { username: 'alice', password: 'private-external-token' }, mappings: [{ projectId: '1', workspaceId: 'ws' }] })
     return { service, store, set: (v: ExternalItem[]) => { items = v }, fail: () => { fail = true } }
   }
+  it('imports into todo only for new tasks and rejects unsupported destinations', async () => {
+    const f = await fixture()
+    await f.service.sync()
+    const config = (await f.service.status()).config!
+    await expect(f.service.configure({ ...config, importStatus: 'done', credentials: {} })).rejects.toThrow('import status')
+    await f.service.configure({ ...config, importStatus: 'todo', credentials: {} })
+    f.set([item, { ...item, id: 'another' }])
+    await f.service.sync()
+    expect(f.store.snapshot().tasks.map(t => t.status)).toEqual(['backlog', 'todo'])
+    expect(f.store.snapshot().tasks[1]!.execution.mode).toBe('claim')
+    expect((await f.service.status()).config!.importStatus).toBe('todo')
+    f.service.dispose()
+  })
   it('is idempotent and creates non-executing backlog tasks', async () => {
     const f = await fixture()
     expect((await f.service.sync()).created).toBe(1)

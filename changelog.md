@@ -1,18 +1,22 @@
 # 更新日志 / Changelog
 
-### Unreleased
+### 0.9.0 — 2026-10-16
 
-- **External sync hardening**: atomically store tasks and sync metadata in the ledger, persist failure status, validate unresolved fields, avoid terminal-card conflict churn, and throttle ZenTao requests with fewer detail reads. Restrict packaged docs to user/provider guides and align compact accessible mapping-delete buttons with their inputs.
+- **导入目标**：外部同步可选择将新任务导入「待规划」或「待办」，默认待规划，已有任务状态不变。
 
-- **Settings navigation and ZenTao login**: split the settings window into General and External sync using a left sidebar with keyboard navigation and retained drafts. ZenTao now saves a login username/password and obtains an in-memory API token automatically, renewing it once after HTTP 401/403. Usernames may be redisplayed; passwords remain host-only. Token-only ZenTao configurations are no longer supported.
+- **外部任务同步（#48）**：新增通用 Provider 接口，支持禅道产品 Bug 及 TAPD 缺陷、需求、任务；提供处理人筛选、项目映射、手动与定时同步、来源链接和三方合并冲突处理。禅道已由用户在真实环境实测；TAPD 已通过本地模拟验证，真实环境仍待验证。
+- **设置与登录**：新增「通用设置 / 外部同步」左侧菜单，切换保留草稿。禅道保存用户名和密码、自动获取 Token，默认复用登录账号作为任务处理人；可指定其他处理人。不支持旧 Token 配置。
+- **同步可靠性与界面**：任务和同步元数据原子保存，持久化错误及尝试时间，严格校验冲突字段；终态卡片减少更新噪音。禅道增加请求节流和详情请求过滤，修正映射删除按钮的尺寸与对齐。配置说明整合至 README，移除 docs 目录。
+- **固定会话降级（#49）**：定时任务绑定的会话归档、占用、配置不匹配、缺失或无法恢复时，创建新会话继续执行并记录原因，保留原绑定。
 
-- **Provider registry and TAPD**: declare provider-specific authentication, credentials, settings, work item types, pagination and discovery capabilities. The shared configuration UI is driven by registry descriptors. Add TAPD Bugs/Stories/Tasks, Basic/Bearer authentication, exact multi-assignee matching, cursor scans and project discovery. Require username/password for ZenTao; switching TAPD authentication methods does not duplicate imported work items.
+**English:**
 
-- **固定会话降级修复（#49）**：定时任务绑定的会话归档、占用、配置不匹配、缺失或无法恢复时，创建新会话继续执行；执行记录保存具体原因，会话提示缺少上一轮上下文，宿主输出诊断警告。保留原绑定，避免临时占用时意外改变用户选择。
-- **Bound session fallback (#49)**: scheduled runs start a fresh conversation when the selected session cannot be reused, record the specific reason, warn about missing prior context, and log diagnostics while preserving the explicit binding.
+- **Import destination**: choose Backlog (default) or Todo for new external tasks without changing existing task statuses.
 
-- **ZenTao product Bug integration (#48)**: add a generic provider/sync service, host-only connection configuration, product-to-workspace mapping, manual and periodic imports to Backlog, source metadata, idempotent content updates, conflict resolution and deletion exclusions. Local execution status and evidence remain independent. Initial support targets REST API v1 product Bugs; real deployment compatibility awaits validation.
-
+- **External task sync (#48)**: add a common provider contract, ZenTao product Bugs and TAPD Bugs/Stories/Tasks, assignee filtering, project mapping, manual/polling imports, source links and three-way conflict handling. ZenTao is user-verified against a real deployment; TAPD real deployment validation remains pending.
+- **Settings and login**: add General/External sync navigation with retained drafts. ZenTao saves username/password and obtains tokens automatically; reuse the login username as assignee by default or select another account. Old token-only configurations are unsupported.
+- **Reliability and UI**: atomically persist tasks and sync metadata, retain failures and attempt timestamps, validate conflicts, reduce terminal-card churn, throttle ZenTao requests and avoid unnecessary detail reads. Align compact mapping-delete buttons. Consolidate setup instructions into README and remove docs.
+- **Bound session fallback (#49)**: create a fresh conversation when a scheduled bound session is unavailable, record the reason and preserve the original binding.
 
 ### 0.8.10
 

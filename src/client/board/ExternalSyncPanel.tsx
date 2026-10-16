@@ -19,6 +19,7 @@ export function ExternalSyncPanel() {
   const [projects, setProjects] = useState<ExternalProject[]>([])
   const [since, setSince] = useState('')
   const [interval, setIntervalMinutes] = useState('0')
+  const [importStatus, setImportStatus] = useState<'backlog' | 'todo'>('backlog')
   const [mappings, setMappings] = useState<Array<{ projectId: string; workspaceId: string }>>([{ projectId: '', workspaceId: '' }])
   const [workspaces, setWorkspaces] = useState<WorkspaceView[]>([])
   const [busy, setBusy] = useState(false)
@@ -29,7 +30,7 @@ export function ExternalSyncPanel() {
   const effectiveAccount = providerId === 'zentao' && reuseLogin ? (credentials.username ?? '').trim() : account
   const canKeepCredentials = status?.config?.provider === providerId && status.config.authMode === authMode
     && status.config.account === effectiveAccount && status.config.baseUrl === baseUrl.replace(/\/$/, '')
-  const draft = () => ({ provider: providerId, baseUrl, account: effectiveAccount, authMode, credentials, settings, itemTypes, since, intervalMinutes: Number(interval), mappings })
+  const draft = () => ({ provider: providerId, baseUrl, account: effectiveAccount, authMode, credentials, settings, itemTypes, since, intervalMinutes: Number(interval), importStatus, mappings })
   const selectProvider = (p: ProviderDescriptor) => {
     setProviderId(p.id); setBaseUrl(p.defaultBaseUrl); setAuthMode(p.authModes[0]!.id)
     setReuseLogin(true)
@@ -45,6 +46,7 @@ export function ExternalSyncPanel() {
       if (c) {
         setProviderId(c.provider); setAuthMode(c.authMode); setItemTypes(c.itemTypes); setSettings(c.settings)
         setCredentials(s.credentialValues ?? {})
+        setImportStatus(c.importStatus ?? 'backlog')
         setReuseLogin(c.provider !== 'zentao' || c.account === (s.credentialValues?.username ?? '').trim())
         setBaseUrl(c.baseUrl); setAccount(c.account); setSince(c.since); setIntervalMinutes(String(c.intervalMinutes)); setMappings(c.mappings)
       } else if (s.providers?.[0]) selectProvider(s.providers[0])
@@ -100,6 +102,10 @@ export function ExternalSyncPanel() {
       {descriptor?.settingsFields?.map(field => <label key={field.key}>{t(field.label)}<input value={settings[field.key] ?? field.defaultValue} onChange={e => setSettings({ ...settings, [field.key]: e.target.value })} /></label>)}
       <label>{t('ext.since')}<input type="date" value={since} onChange={e => setSince(e.target.value)} /></label>
       <label>{t('ext.interval')}<input type="number" min="0" max="1440" value={interval} onChange={e => setIntervalMinutes(e.target.value)} /></label>
+      <label>{t('ext.importStatus')}<select value={importStatus} onChange={e => setImportStatus(e.target.value as 'backlog' | 'todo')}>
+        <option value="backlog">{t('ext.importBacklog')}</option><option value="todo">{t('ext.importTodo')}</option>
+      </select></label>
+      <p>{t('ext.importStatusHint')}</p>
       {mappings.map((m, index) => <div key={index} className="dsh-atb-external-mapping">
         <label>{t(descriptor?.scopeLabel ?? 'ext.projectId')}<input list="dsh-atb-external-projects" value={m.projectId} onChange={e => setMappings(mappings.map((v, i) => i === index ? { ...v, projectId: e.target.value } : v))} /></label>
         <label>{t('ext.workspace')}<select value={m.workspaceId} onChange={e => setMappings(mappings.map((v, i) => i === index ? { ...v, workspaceId: e.target.value } : v))}>

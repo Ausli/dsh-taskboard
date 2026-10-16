@@ -37,6 +37,8 @@ export function normalizeConnection(raw: unknown, registry: ExternalProviderRegi
   })
   if (new Set(mappings.map(m => m.projectId)).size !== mappings.length) throw new Error('duplicate project mapping')
   const intervalMinutes = Number(e.intervalMinutes ?? 0)
+  const importStatus = e.importStatus ?? 'backlog'
+  if (importStatus !== 'backlog' && importStatus !== 'todo') throw new Error('import status must be backlog or todo')
   if (!Number.isInteger(intervalMinutes) || (intervalMinutes !== 0 && (intervalMinutes < 5 || intervalMinutes > 1440))) throw new Error('sync interval must be 0 or 5–1440 minutes')
   const since = String(e.since ?? '')
   if (since && (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !Number.isFinite(Date.parse(since)) || new Date(since).toISOString().slice(0, 10) !== since)) throw new Error('invalid start date')
@@ -50,7 +52,7 @@ export function normalizeConnection(raw: unknown, registry: ExternalProviderRegi
     settings[field.key] = value.trim()
   }
   const config: ExternalConfig = { id: sameSource ? previous!.id : newTaskId(), provider, baseUrl: url, account, authMode,
-    credentials, itemTypes: [...new Set(itemTypes)], settings, mappings, intervalMinutes, since }
+    credentials, itemTypes: [...new Set(itemTypes)], settings, mappings, intervalMinutes, since, importStatus }
   definition.validate?.(config)
   return config
 }

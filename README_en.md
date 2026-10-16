@@ -13,7 +13,7 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 - **Git worktree isolation**: each run works on its own worktree + dedicated task branch, one-click merge at acceptance; parallel multi-repo workspaces are mirrored whole (0.6.3); non-git projects fall back automatically
 - **Efficient acceptance**: DoD acceptance checklists (agent checks items off with evidence), structured execution reports (summary / changed files / checks / artifacts / risks), in-board diff viewer
 - **Live board**: SSE real-time refresh, five-column flow, persisted filters & sorting, JSON import/export, task templates
-- **External task sync**: ZenTao product Bugs and TAPD Bugs/Stories/Tasks, one-way imports by assignee, manual/host polling, project mapping, source links and conflict protection; [setup](./docs/external-sync.en.md), [provider extension contract](./docs/external-providers.md).
+- **External task sync**: ZenTao product Bugs (real deployment tested) and TAPD Bugs/Stories/Tasks, with assignee filtering, polling, project mapping and conflict protection. See External task sync below.
 
 **Zero configuration**: install and it works — no tokens, no API keys, no extra services or databases.
 
@@ -242,7 +242,25 @@ node tests/manual-git-e2e.mjs   # real-git end-to-end manual test (full worktree
 
 `npm run build` cleans stale files from `lib/` before generating the host ESM modules and the client registration module, `lib/client.js`. `npm run build:host` and `npm run build:client` rebuild only their respective half and preserve the other half's output; run the full build before publishing.
 
+## External task sync (0.9.0)
+
+Supports ZenTao REST API v1 product Bugs and TAPD Bugs, Stories and Tasks. ZenTao has been tested by the user against a real deployment. TAPD passes local mock validation; real deployment validation is pending.
+
+1. Open settings and select **External sync** in the left sidebar. Existing options are under **General**.
+2. For ZenTao, enter the installation URL without `/api.php/v1`, a login username and password. **Sync tasks assigned to this login account** is selected by default; uncheck it to enter another assignee's account.
+3. TAPD defaults to `https://api.tapd.cn`, supports API Basic Auth or Bearer Token, and requires a separate assignee nickname. Project discovery also requires a company ID.
+4. Map external product/project IDs to local workspaces and select item types. Save, test, then sync. Polling is disabled at 0 or enabled at 5–1440 minutes; the host must remain running.
+
+Choose Backlog (default) or Todo under **Import into**. This only affects new tasks and does not directly start execution or change existing task statuses. Sync reads external systems without writing back. Title, description and urgency use three-way merging; local conflicts are retained for resolution in task details. Running/review cards retain their content. Completed/canceled cards update only source status and assignees; archived cards stop updating. Deleted tasks are excluded from automatic reimport; exclusions can be cleared. Source links open the external tracker.
+
+Connections and credentials are stored in the host-only plaintext `dsh-taskboard-external.json` under active DSH_HOME; protect this file. Passwords/tokens are excluded from public status and task exports. ZenTao obtains and reuses an in-memory token; old token-only configurations are unsupported. Source links, exclusions and results commit atomically with tasks and follow board backups; migrate connection credentials separately. Only one active connection is supported. Screenshots, attachments, webhooks and status write-back are not included.
+
 ## Changelog
+
+### 0.9.0
+
+- Add ZenTao/TAPD external sync and a shared provider contract; ZenTao is verified against a real deployment. Add settings navigation, login-assignee reuse, conflict handling, durable sync status and request throttling.
+- Fall back to a new conversation when a scheduled bound session cannot be reused (#49).
 
 ### 0.8.10
 
