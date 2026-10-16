@@ -1054,6 +1054,9 @@ export function syncClaim(task: TaskRecord, to: TaskStatus, now: number, holder?
  * Collect unique execution session IDs associated with a task:
  * - executions with a non-empty `sessionId`
  * Creator and claim sessions may serve other tasks and are never included.
+ * Bulk ARCHIVE semantics: only sessions this task owns are listed, so the
+ * user's originating conversation is never swept up. For UI navigation and
+ * follow-up routing use {@link taskSessionId} instead.
  * @param task - the task record to inspect.
  * @returns an array of distinct session IDs in stable discovery order.
  */
@@ -1078,6 +1081,43 @@ export function taskAssociatedSessionIds(task: TaskRecord): string[] {
     }
   }
   return result
+}
+
+/**
+ * The ONE conversation a card points at for navigation and follow-up, by
+ * descending priority:
+ *
+ * 1. the running execution's session;
+ * 2. the most recent execution that recorded a session;
+ * 3. the session holding the claim (only meaningful while in progress);
+ * 4. a scheduled binding (`autoReuseSessionId` / `reuseSessionId`);
+ * 5. the AGENT session that created the card — the conversation the work was
+ *    asked for in — then the last agent editor as a final fallback.
+ *
+ * Rules 1–4 cover work the board itself executed. Rule 5 exists because a card
+ * created in a conversation and worked on in that same conversation records NO
+ * execution (nothing spawned a session), so without it five of six cards could
+ * not be navigated back to the conversation they came from.
+ *
+ * Deliberately NOT {@link taskAssociatedSessionIds}: that one answers "which
+ * sessions does this task OWN" for archiving and must stay execution-only,
+ * while this one answers "where does the human talk to this task".
+ * @param task - the task record to inspect.
+ * @returns the session id, or undefined when the card has no conversation yet.
+ */
+export function taskSessionId(task: TaskRecord): string | undefined {
+  const running = task.executions?.find(ex => ex.outcome === 'running')
+  if (running?.sessionId !== undefined && running.sessionId.length > 0) return running.sessionId
+  const sessionExecution = task.executions === undefined
+    ? undefined
+    : [...task.executions].reverse().find(ex => ex.sessionId !== undefined && ex.sessionId.length > 0)
+  if (sessionExecution?.sessionId !== undefined) return sessionExecution.sessionId
+  if (task.claimedBy !== undefined && task.claimedBy.startsWith('session-')) return task.claimedBy
+  if (task.execution?.autoReuseSessionId !== undefined) return task.execution.autoReuseSessionId
+  if (task.execution?.reuseSessionId !== undefined) return task.execution.reuseSessionId
+  if (task.createdBy?.kind === 'agent' && task.createdBy.sessionId !== undefined) return task.createdBy.sessionId
+  if (task.updatedBy?.kind === 'agent' && task.updatedBy.sessionId !== undefined) return task.updatedBy.sessionId
+  return undefined
 }
 
 /**

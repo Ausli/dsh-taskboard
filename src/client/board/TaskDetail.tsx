@@ -11,7 +11,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ExternalSourcePanel } from './ExternalSourcePanel.tsx'
 import type { BoardController } from '../controller.ts'
 import type { CommentRecord, ExecutionRecord, TaskRecord } from '../../shared/protocol.ts'
-import { canTransition, checklistProgress, taskAssociatedSessionIds } from '../../shared/protocol.ts'
+import { canTransition, checklistProgress, taskAssociatedSessionIds, taskSessionId } from '../../shared/protocol.ts'
 import { useAlert } from './AlertModal.tsx'
 import { fmtTime, isStaleClaim } from './format.ts'
 import { MOVE_KEYS, OUTCOME_KEYS, STATUS_KEYS, URGENCY_KEYS } from './labels.ts'
@@ -529,13 +529,17 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
   const [actionBusy, setActionBusy] = useState(false)
   const { alert: showAlert, el: alertEl } = useAlert()
   const ws = controller.getSnapshot().workspaces.find(w => w.id === task.workspaceId)
-  const canRun = task.status !== 'in_progress' && task.status !== 'done' && task.status !== 'archived'
   const runningExecution = task.executions.find(e => e.outcome === 'running')
   const holder = task.status === 'in_progress' ? task.claimedBy : undefined
+  // Run is blocked by work IN FLIGHT, not by the status label. A card the user
+  // moved back to in progress with nothing holding it is runnable again —
+  // the old status check both refused the run downstream and hid this button,
+  // leaving the card stuck until it was pushed back through todo (issue #50).
+  const canRun = task.status !== 'done' && task.status !== 'archived'
+    && runningExecution === undefined && holder === undefined
   const stale = now !== undefined && isStaleClaim(task, now)
   const unchecked = (task.checklist ?? []).filter(i => !i.checked).length
-  const sessionExecution = [...task.executions].reverse().find(e => e.sessionId !== undefined)
-  const targetSessionId = runningExecution?.sessionId ?? sessionExecution?.sessionId ?? (task.claimedBy?.startsWith('session-') ? task.claimedBy : undefined)
+  const targetSessionId = taskSessionId(task)
   const associatedSessions = taskAssociatedSessionIds(task)
   const archiveState = controller.getSnapshot()
   const archiveResult = archiveState.sessionArchive?.taskId === task.id ? archiveState.sessionArchive.result : undefined

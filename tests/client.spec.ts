@@ -1196,6 +1196,64 @@ describe('client half', () => {
     localStorage.clear()
   })
 
+  // Issue #50: the run button was gated on the STATUS label, so a card the
+  // user moved back from review (in progress, nothing holding it) lost both
+  // the button and the ability to run — the card was stuck.
+  it('detail: run stays available on an unheld in-progress card and hides while work is in flight', async () => {
+    localStorage.clear()
+    const React = await import('react')
+    const { createRoot } = await import('react-dom/client')
+    const { BoardController } = await import('../src/client/controller.ts')
+    const { TaskDetail } = await import('../src/client/board/TaskDetail.tsx')
+
+    const base = {
+      title: '回来了', description: '', prompt: '', workspaceId: 'ws-a',
+      urgency: 'normal' as const, blocked: false, execution: { mode: 'claim' as const },
+      version: 3, createdAt: 0, updatedAt: 0,
+      createdBy: { kind: 'user' as const }, updatedBy: { kind: 'user' as const },
+      comments: [], executions: [],
+    }
+    const client = {
+      state: async () => ({ schemaVersion: 1, revision: 1, tasks: [] }),
+      workspaces: async () => [{ id: 'ws-a', path: '/p/a', title: 'A', sessionCount: 0 }],
+      stream: () => () => {},
+    }
+    const controller = new BoardController(client as never)
+    controller.start()
+    await new Promise(r => setTimeout(r, 10))
+
+    /** Render one card shape and report whether the run button is offered. */
+    const runOffered = async (task: Record<string, unknown>): Promise<boolean> => {
+      const host = document.createElement('div')
+      document.body.append(host)
+      const root = createRoot(host)
+      root.render(React.createElement(TaskDetail, { task: task as never, controller, now: 1_000 }))
+      await new Promise(r => setTimeout(r, 10))
+      const offered = Array.from(host.querySelectorAll<HTMLButtonElement>('.dsh-atb-detail-run'))
+        .some(button => button.textContent === '▶ 立即执行')
+      root.unmount()
+      host.remove()
+      return offered
+    }
+
+    // Orphaned in progress (the reported state): runnable again.
+    expect(await runOffered({ ...base, id: 't-orphan', status: 'in_progress' })).toBe(true)
+    // Held by a session: someone is on it, so no second runner.
+    expect(await runOffered({ ...base, id: 't-held', status: 'in_progress', claimedBy: 'session-holder' })).toBe(false)
+    // A live execution: same.
+    expect(await runOffered({
+      ...base,
+      id: 't-live',
+      status: 'in_progress',
+      executions: [{ id: 'e-1', trigger: 'manual', startedAt: 0, outcome: 'running', sessionId: 'session-live' }],
+    })).toBe(false)
+    // Review is still runnable (unchanged behavior).
+    expect(await runOffered({ ...base, id: 't-review', status: 'in_review' })).toBe(true)
+
+    controller.dispose()
+    localStorage.clear()
+  })
+
   it('detail: archive move with associated session prompts for confirmation and supports archive with session vs card only', async () => {
     localStorage.clear()
     const React = await import('react')

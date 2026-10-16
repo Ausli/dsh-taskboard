@@ -47,6 +47,7 @@ import {
   validateLedgerImport,
   isValidTaskId,
   taskAssociatedSessionIds,
+  taskSessionId,
   type TaskRecord,
 } from '../src/shared/protocol.ts'
 import { TASKBOARD_PROTOCOL } from '../src/host/protocol-text.ts'
@@ -1092,5 +1093,81 @@ describe('mirror protocol additions (0.6.3)', () => {
     // Empty when task has no sessions
     const emptyTask = { ...task, createdBy: { kind: 'user' as const }, claimedBy: undefined, executions: [] }
     expect(taskAssociatedSessionIds(emptyTask)).toEqual([])
+  })
+
+  // Issue #50: the card and the detail pane each had their own resolution, and
+  // the detail pane's copy had lost the originating-conversation fallback — so
+  // a card created and worked on in one conversation (no execution record)
+  // could not be navigated back to it from the detail pane.
+  describe('taskSessionId (the one conversation a card points at)', () => {
+    const base = (overrides: Partial<TaskRecord> = {}): TaskRecord => ({
+      id: 't-1',
+      title: 'T',
+      description: '',
+      prompt: '',
+      workspaceId: 'ws-a',
+      urgency: 'normal',
+      status: 'in_review',
+      blocked: false,
+      execution: { mode: 'claim' },
+      version: 1,
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: { kind: 'user' },
+      updatedBy: { kind: 'user' },
+      comments: [],
+      executions: [],
+      ...overrides,
+    })
+
+    it('prefers the live run, then the latest execution, then the holder', () => {
+      expect(taskSessionId(base({
+        executions: [
+          { id: 'e-1', trigger: 'manual', startedAt: 0, outcome: 'succeeded', sessionId: 's-old' },
+          { id: 'e-2', trigger: 'manual', startedAt: 1, outcome: 'running', sessionId: 's-live' },
+        ],
+      }))).toBe('s-live')
+      expect(taskSessionId(base({
+        executions: [
+          { id: 'e-1', trigger: 'manual', startedAt: 0, outcome: 'succeeded', sessionId: 's-old' },
+          { id: 'e-2', trigger: 'manual', startedAt: 1, outcome: 'failed', sessionId: 's-new' },
+        ],
+      }))).toBe('s-new')
+      expect(taskSessionId(base({ status: 'in_progress', claimedBy: 'session-holder' }))).toBe('session-holder')
+    })
+
+    it('falls back to the conversation that created the card', () => {
+      // The exact shape from the field report: created in a conversation,
+      // worked on there, never recorded an execution.
+      expect(taskSessionId(base({
+        createdBy: { kind: 'agent', sessionId: 'session-origin' },
+      }))).toBe('session-origin')
+      // A user-created card still has no conversation to point at.
+      expect(taskSessionId(base())).toBeUndefined()
+    })
+
+    it('honours a scheduled binding and the last agent editor, in that order', () => {
+      expect(taskSessionId(base({
+        execution: { mode: 'scheduled', cron: '* * * * *', reuseSessionId: 'session-bound' },
+        createdBy: { kind: 'agent', sessionId: 'session-origin' },
+      }))).toBe('session-bound')
+      expect(taskSessionId(base({
+        createdBy: { kind: 'user' },
+        updatedBy: { kind: 'agent', sessionId: 'session-editor' },
+      }))).toBe('session-editor')
+    })
+
+    it('stays distinct from the archive set: archiving never sweeps the origin', () => {
+      const task = base({
+        createdBy: { kind: 'agent', sessionId: 'session-origin' },
+        executions: [{ id: 'e-1', trigger: 'manual', startedAt: 0, outcome: 'succeeded', sessionId: 'session-owned' }],
+      })
+      expect(taskAssociatedSessionIds(task)).toEqual(['session-owned'])
+      expect(taskSessionId(task)).toBe('session-owned')
+      // With no execution, the archive set is empty while navigation still works.
+      const cardOnly = base({ createdBy: { kind: 'agent', sessionId: 'session-origin' } })
+      expect(taskAssociatedSessionIds(cardOnly)).toEqual([])
+      expect(taskSessionId(cardOnly)).toBe('session-origin')
+    })
   })
 })

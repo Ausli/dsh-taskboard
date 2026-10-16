@@ -508,8 +508,14 @@ export class ExecutionService {
         gate = 'scheduled dispatch is no longer queued'
         return undefined
       }
-      if (target.status === 'in_progress' || target.executions.some(e => e.outcome === 'running')
-        || [...this.runs.values()].some(e => target.executions.some(x => x.sessionId === e.sessionId))) {
+      // Refuse while work is IN FLIGHT: a live execution, or a session holding
+      // the claim. Status alone is not the test — a card moved back to
+      // in progress by the user, or left behind by a run whose host died,
+      // is in progress with nothing holding it, and refusing that made the
+      // card unrunnable until it was pushed back through todo (issue #50).
+      // A run that passes this gate re-claims the card, so the orphan state
+      // repairs itself instead of persisting.
+      if (target.executions.some(e => e.outcome === 'running') || target.claimedBy !== undefined) {
         gate = 'task is already in progress'
         return undefined
       }
