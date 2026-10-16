@@ -3,7 +3,7 @@ import type { ExternalTaskProvider, ExternalReadContext } from './external-provi
 import { externalGet, trackerText, ExternalRequestThrottle } from './external-http.ts'
 export { trackerText } from './external-http.ts'
 
-/** ZenTao REST API v1: product Bugs/Stories and execution Tasks. */
+/** ZenTao REST API v1: project or execution mapping, independent of item types. */
 export class ZentaoProvider implements ExternalTaskProvider {
   private token?: string
   private readonly throttle: ExternalRequestThrottle
@@ -39,18 +39,9 @@ export class ZentaoProvider implements ExternalTaskProvider {
     return raw as Record<string, unknown>
   }
   private scope(projectId: string) {
-    const execution = projectId.startsWith('execution:')
-    const id = execution ? projectId.slice(10) : projectId
-    if (!/^\d+$/.test(id)) throw new Error('invalid ZenTao scope')
-    return { id, execution }
-  }
-  private types(projectId: string): string[] {
-    const { execution } = this.scope(projectId)
-    return this.config.itemTypes.filter(type => execution ? type === 'task' : type === 'bug' || type === 'story')
-  }
-  private listPath(projectId: string, type: string): string {
-    const { id, execution } = this.scope(projectId)
-    return `${execution ? 'executions' : 'products'}/${id}/${type === 'story' ? 'stories' : type + 's'}`
+    const match = /^(project|execution):(\d+)$/.exec(projectId)
+    if (!match || match[1] !== this.config.mappingMode) throw new Error('invalid ZenTao mapping scope')
+    return { id: match[2]!, execution: match[1] === 'execution' }
   }
   private async scopes(path: string, key: string, signal: AbortSignal): Promise<ExternalProject[]> {
     const values: ExternalProject[] = []; const seen = new Set<string>()
@@ -73,13 +64,13 @@ export class ZentaoProvider implements ExternalTaskProvider {
     throw new Error('ZenTao scope pagination limit exceeded')
   }
   async listProjects(signal: AbortSignal): Promise<ExternalProject[]> {
+    if (!this.config.mappingMode) throw new Error('select a project or execution mapping mode')
+    const projects = await this.scopes('projects', 'projects', signal)
+    if (this.config.mappingMode === 'project') return projects.map(p => ({ ...p, id: `project:${p.id}` }))
     const scopes: ExternalProject[] = []
-    if (this.config.itemTypes.some(t => t !== 'task')) scopes.push(...await this.scopes('products', 'products', signal))
-    if (this.config.itemTypes.includes('task')) {
-      for (const project of await this.scopes('projects', 'projects', signal)) {
-        for (const execution of await this.scopes(`projects/${project.id}/executions`, 'executions', signal)) {
-          if (!scopes.some(s => s.id === `execution:${execution.id}`)) scopes.push({ id: `execution:${execution.id}`, name: `${project.name} / ${execution.name}` })
-        }
+    for (const project of projects) {
+      for (const execution of await this.scopes(`projects/${project.id}/executions`, 'executions', signal)) {
+        if (!scopes.some(s => s.id === `execution:${execution.id}`)) scopes.push({ id: `execution:${execution.id}`, name: `${project.name} / ${execution.name}` })
       }
     }
     return scopes
@@ -95,10 +86,12 @@ export class ZentaoProvider implements ExternalTaskProvider {
   private account(raw: unknown): string {
     return typeof raw === 'object' && raw !== null ? String((raw as Record<string, unknown>).account ?? '') : String(raw ?? '')
   }
-  private normalize(projectId: string, type: string, b: Record<string, unknown>): ExternalItem {
-    const id = this.id(b.id); const { id: scopeId, execution } = this.scope(projectId)
-    const scope = b[execution ? 'execution' : 'product']
+  private normalize(projectId: string, type: string, b: Record<string, unknown>, readScope = projectId): ExternalItem {
+    const id = this.id(b.id)
+    const [kind, scopeId] = readScope.split(':')
+    const scope = b[kind === 'execution' ? 'execution' : 'project']
     if (scope !== undefined && this.id(scope) !== scopeId) throw new Error('unexpected ZenTao item scope')
+    if (type === 'task' && projectId.startsWith('project:') && b.project !== undefined && this.id(b.project) !== projectId.slice(8)) throw new Error('unexpected ZenTao task project')
     const title = type === 'task' ? b.name : b.title
     if (typeof title !== 'string' || !title.trim() || typeof b.status !== 'string') throw new Error('invalid ZenTao item fields')
     const priority = String(b.pri ?? '')
@@ -109,56 +102,85 @@ export class ZentaoProvider implements ExternalTaskProvider {
       urgency: priority === '1' ? 'urgent' : priority === '4' ? 'relaxed' : 'normal',
       url: `${this.config.baseUrl}/index.php?m=${type}&f=view&${type}ID=${encodeURIComponent(id)}` }
   }
-  private async detail(projectId: string, type: string, id: string, signal: AbortSignal): Promise<Record<string, unknown>> {
+  private async detail(type: string, id: string, listed: Record<string, unknown>, signal: AbortSignal): Promise<Record<string, unknown>> {
     const result = await this.get(`${type === 'story' ? 'stories' : type + 's'}/${id}`, signal)
     const b = result[type] && typeof result[type] === 'object' ? result[type] as Record<string, unknown> : result
-    const { id: scopeId, execution } = this.scope(projectId)
-    if (this.id(b.id) !== id || this.id(b[execution ? 'execution' : 'product']) !== scopeId) throw new Error('invalid ZenTao item details')
+    if (this.id(b.id) !== id) throw new Error('invalid ZenTao item details')
+    for (const field of ['product', 'project', 'execution']) {
+      if (listed[field] !== undefined && b[field] !== undefined && this.id(listed[field]) !== this.id(b[field])) throw new Error('invalid ZenTao item details scope')
+    }
     return b
   }
   async getItem(projectId: string, type: string, id: string, signal: AbortSignal): Promise<ExternalItem | undefined> {
-    if (!this.types(projectId).includes(type)) throw new Error('unsupported ZenTao work item')
+    if (!this.config.itemTypes.includes(type)) throw new Error('unsupported ZenTao work item')
     this.id(id)
-    return this.normalize(projectId, type, await this.detail(projectId, type, id, signal))
+    // Membership is established by a scoped list, not inferred from a Story detail's product ID.
+    return (await this.scanItems(projectId, [type], signal)).find(item => item.id === id)
+  }
+  private async readScopes(projectId: string, type: string, signal: AbortSignal): Promise<string[]> {
+    const scope = this.scope(projectId)
+    if (!scope.execution && type === 'task') {
+      return (await this.scopes(`projects/${scope.id}/executions`, 'executions', signal)).map(e => `execution:${e.id}`)
+    }
+    return [projectId]
+  }
+  private readPath(readScope: string, type: string): string {
+    const [kind, id] = readScope.split(':')
+    return `${kind === 'execution' ? 'executions' : 'projects'}/${id}/${type === 'story' ? 'stories' : type + 's'}`
   }
   async test(signal: AbortSignal): Promise<void> {
-    for (const mapping of this.config.mappings) for (const type of this.types(mapping.projectId)) {
-      const result = await this.get(`${this.listPath(mapping.projectId, type)}?status=${type === 'story' ? 'allstory' : 'all'}&limit=1&page=1`, signal)
-      if (!Array.isArray(result[type === 'story' ? 'stories' : type + 's'])) throw new Error('unsupported ZenTao work item API')
+    if (!this.config.mappingMode) throw new Error('select a project or execution mapping mode')
+    if (!this.config.mappings.length) {
+      const result = await this.get('projects?limit=1&page=1', signal)
+      if (!Array.isArray(result.projects)) throw new Error('unsupported ZenTao project API')
+    }
+    for (const mapping of this.config.mappings) for (const type of this.config.itemTypes) {
+      for (const scope of await this.readScopes(mapping.projectId, type, signal)) {
+        const result = await this.get(`${this.readPath(scope, type)}?status=${type === 'story' ? 'allstory' : 'all'}&limit=1&page=1`, signal)
+        if (!Array.isArray(result[type === 'story' ? 'stories' : type + 's'])) throw new Error('unsupported ZenTao work item API')
+      }
     }
   }
   async getItems(projectId: string, signal: AbortSignal, context?: ExternalReadContext): Promise<ExternalItem[]> {
+    return this.scanItems(projectId, this.config.itemTypes, signal, context)
+  }
+  private async scanItems(projectId: string, types: readonly string[], signal: AbortSignal, context?: ExternalReadContext): Promise<ExternalItem[]> {
     const items: ExternalItem[] = []
-    for (const type of this.types(projectId)) {
-      const seen = new Set<string>(); let completed = false
-      for (let page = 1; page <= 10_000; page++) {
-        const result = await this.get(`${this.listPath(projectId, type)}?status=${type === 'story' ? 'allstory' : 'all'}&limit=100&page=${page}`, signal)
-        const rows = result[type === 'story' ? 'stories' : type + 's']
-        if (!Array.isArray(rows)) throw new Error('invalid ZenTao item list')
-        let added = 0
-        for (const raw of rows) {
-          if (!raw || typeof raw !== 'object') throw new Error('invalid ZenTao item')
-          let b = raw as Record<string, unknown>; const id = this.id(b.id)
-          if (seen.has(id)) continue
-          seen.add(id); added++
-          const listed = this.normalize(projectId, type, b)
-          const previous = context?.existing.get(JSON.stringify([type, id]))
-          const opened = typeof b.openedDate === 'string' ? b.openedDate.slice(0, 10) : ''
-          if (!previous && this.config.since && opened && opened < this.config.since) continue
-          if (context && !previous && (listed.assignedTo !== this.config.account || listed.closed)) continue
-          const missing = type === 'bug' ? b.steps === undefined : type === 'task' ? b.desc === undefined : b.spec === undefined || b.verify === undefined
-          if (missing && previous?.metadataOnly) { items.push({ ...listed, description: previous.item.description }); continue }
-          if (missing) {
-            b = { ...b, ...await this.detail(projectId, type, id, signal) }
-            if (type === 'bug' ? typeof b.steps !== 'string' : type === 'task' ? typeof b.desc !== 'string' : typeof b.spec !== 'string' || typeof b.verify !== 'string') throw new Error('ZenTao item description is missing')
+    for (const type of types) {
+      const seenItems = new Set<string>()
+      for (const readScope of await this.readScopes(projectId, type, signal)) {
+        const seen = new Set<string>(); let completed = false
+        for (let page = 1; page <= 10_000; page++) {
+          const result = await this.get(`${this.readPath(readScope, type)}?status=${type === 'story' ? 'allstory' : 'all'}&limit=100&page=${page}`, signal)
+          const rows = result[type === 'story' ? 'stories' : type + 's']
+          if (!Array.isArray(rows)) throw new Error('invalid ZenTao item list')
+          let added = 0
+          for (const raw of rows) {
+            if (!raw || typeof raw !== 'object') throw new Error('invalid ZenTao item')
+            let b = raw as Record<string, unknown>; const id = this.id(b.id)
+            if (seen.has(id)) continue
+            seen.add(id); added++
+            if (seenItems.has(id)) continue
+            seenItems.add(id)
+            const listed = this.normalize(projectId, type, b, readScope)
+            const previous = context?.existing.get(JSON.stringify([type, id]))
+            const opened = typeof b.openedDate === 'string' ? b.openedDate.slice(0, 10) : ''
+            if (!previous && this.config.since && opened && opened < this.config.since) continue
+            if (context && !previous && (listed.assignedTo !== this.config.account || listed.closed)) continue
+            const missing = type === 'bug' ? b.steps === undefined : type === 'task' ? b.desc === undefined : b.spec === undefined || b.verify === undefined
+            if (missing && previous?.metadataOnly) { items.push({ ...listed, description: previous.item.description }); continue }
+            if (missing) {
+              b = { ...b, ...await this.detail(type, id, b, signal) }
+              if (type === 'bug' ? typeof b.steps !== 'string' : type === 'task' ? typeof b.desc !== 'string' : typeof b.spec !== 'string' || typeof b.verify !== 'string') throw new Error('ZenTao item description is missing')
+            }
+            items.push(this.normalize(projectId, type, b, readScope))
           }
-          items.push(this.normalize(projectId, type, b))
+          const total = Number(result.total)
+          if (!rows.length || (Number.isFinite(total) && seen.size >= total)) { completed = true; break }
+          if (!added) throw new Error('ZenTao pagination did not advance')
         }
-        const total = Number(result.total)
-        if (!rows.length || (Number.isFinite(total) && seen.size >= total)) { completed = true; break }
-        if (!added) throw new Error('ZenTao pagination did not advance')
+        if (!completed) throw new Error('ZenTao pagination limit exceeded')
       }
-      if (!completed) throw new Error('ZenTao pagination limit exceeded')
     }
     return items
   }

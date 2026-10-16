@@ -3,12 +3,15 @@ import { newTaskId } from '../shared/protocol.ts'
 import type { ExternalProviderRegistry } from './external-provider.ts'
 
 /** Platform-neutral validation; each registered provider validates its own scope/options. */
-export function normalizeConnection(raw: unknown, registry: ExternalProviderRegistry, previous?: ExternalConfig, allowEmptyMappings = false): ExternalConfig {
+export function normalizeConnection(raw: unknown, registry: ExternalProviderRegistry, previous?: ExternalConfig, allowEmptyMappings = false, allowLegacyMappings = false): ExternalConfig {
   if (!raw || typeof raw !== 'object') throw new Error('invalid external connection')
   const e = raw as Record<string, unknown>
   const provider = typeof e.provider === 'string' ? e.provider : previous?.provider ?? 'zentao'
   const definition = registry.get(provider)
   const descriptor = definition.descriptor
+  const mappingMode = provider === 'zentao' ? e.mappingMode : undefined
+  if (provider === 'zentao' && e.includeUnmapped !== undefined && typeof e.includeUnmapped !== 'boolean') throw new Error('invalid unmapped sync setting')
+  const includeUnmapped = provider === 'zentao' && e.includeUnmapped === true
   const authMode = typeof e.authMode === 'string' ? e.authMode : descriptor.authModes[0]!.id
   const mode = descriptor.authModes.find(m => m.id === authMode)
   if (!mode) throw new Error('unsupported authentication mode')
@@ -28,13 +31,16 @@ export function normalizeConnection(raw: unknown, registry: ExternalProviderRegi
     if (!credential) throw new Error('enter credentials for this server/account/authentication mode')
     credentials[field.key] = credential
   }
-  if (!Array.isArray(e.mappings) || (!allowEmptyMappings && e.mappings.length === 0)) throw new Error('at least one project mapping is required')
-  const mappings = e.mappings.map((r: unknown) => {
+  if (provider === 'zentao' && mappingMode !== 'project' && mappingMode !== 'execution'
+    && !(allowLegacyMappings && mappingMode === undefined)) throw new Error('select a project or execution mapping mode')
+  if (!Array.isArray(e.mappings)) throw new Error('at least one project mapping is required')
+  const mappings = e.mappings.filter((r: unknown) => provider !== 'zentao' || includeUnmapped || !r || typeof r !== 'object' || (r as Record<string, unknown>).workspaceId !== '').map((r: unknown) => {
     if (!r || typeof r !== 'object') throw new Error('invalid mapping')
     const m = r as Record<string, unknown>
-    if (typeof m.projectId !== 'string' || !m.projectId.trim() || typeof m.workspaceId !== 'string' || !m.workspaceId) throw new Error('invalid mapping')
+    if (typeof m.projectId !== 'string' || !m.projectId.trim() || typeof m.workspaceId !== 'string' || (!m.workspaceId && !includeUnmapped)) throw new Error('invalid mapping')
     return { projectId: m.projectId.trim(), workspaceId: m.workspaceId }
   })
+  if (!allowEmptyMappings && provider !== 'zentao' && !mappings.length) throw new Error('at least one project mapping is required')
   if (new Set(mappings.map(m => m.projectId)).size !== mappings.length) throw new Error('duplicate project mapping')
   const intervalMinutes = Number(e.intervalMinutes ?? 0)
   const importStatus = e.importStatus ?? 'backlog'
@@ -52,7 +58,8 @@ export function normalizeConnection(raw: unknown, registry: ExternalProviderRegi
     settings[field.key] = value.trim()
   }
   const config: ExternalConfig = { id: sameSource ? previous!.id : newTaskId(), provider, baseUrl: url, account, authMode,
-    credentials, itemTypes: [...new Set(itemTypes)], settings, mappings, intervalMinutes, since, importStatus }
+    credentials, itemTypes: [...new Set(itemTypes)], settings, mappings, intervalMinutes, since, importStatus,
+    ...(mappingMode === 'project' || mappingMode === 'execution' ? { mappingMode, includeUnmapped } : {}) }
   definition.validate?.(config)
   return config
 }

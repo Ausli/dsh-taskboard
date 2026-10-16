@@ -14,6 +14,8 @@ export type ExternalConnection = {
   settings: Record<string, string>
   since: string; intervalMinutes: number
   importStatus?: 'backlog' | 'todo'
+  mappingMode?: 'project' | 'execution'
+  includeUnmapped?: boolean
 }
 export type ExternalConfig = ExternalConnection & { credentials: Record<string, string> }
 export type ExternalProject = { id: string; name: string }
@@ -43,6 +45,7 @@ export type ExternalSyncStatus = {
   credentialValues?: Record<string, string>
   providers: ProviderDescriptor[]; lastResult?: SyncResult; lastError?: string; ignoredCount: number
   lastAttemptAt?: number
+  requiresMappingReview?: boolean
 }
 export type ExternalFields = { title: string; description: string; urgency: 'urgent' | 'normal' | 'relaxed' }
 export type ExternalItem = ExternalFields & {

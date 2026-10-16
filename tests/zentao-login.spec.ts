@@ -6,7 +6,7 @@ import { ZentaoProvider } from '../src/host/zentao.ts'
 import { ExternalSyncService, normalizeExternalConfig } from '../src/host/external-sync.ts'
 import { TaskStore } from '../src/host/store.ts'
 
-const body = { provider: 'zentao', baseUrl: 'https://zentao.test', account: 'alice', authMode: 'password', credentials: { username: 'alice-login', password: 'private-password' }, mappings: [{ projectId: '1', workspaceId: 'ws' }] }
+const body = { provider: 'zentao', mappingMode: 'project', baseUrl: 'https://zentao.test', account: 'alice', authMode: 'password', credentials: { username: 'alice-login', password: 'private-password' }, mappings: [{ projectId: 'project:1', workspaceId: 'ws' }] }
 describe('ZenTao saved username/password', () => {
   it('logs in once per operation, reuses the token and renews it once after authentication failure', async () => {
     let logins = 0; let reads = 0
@@ -26,7 +26,7 @@ describe('ZenTao saved username/password', () => {
     }) as typeof fetch
     const provider = new ZentaoProvider(normalizeExternalConfig(body), mock)
     await provider.test(AbortSignal.timeout(1000))
-    await provider.getItems('1', AbortSignal.timeout(1000))
+    await provider.getItems('project:1', AbortSignal.timeout(1000))
     expect(logins).toBe(2); expect(reads).toBe(3)
   })
   it('does not expose login response bodies or retry incorrect credentials indefinitely', async () => {

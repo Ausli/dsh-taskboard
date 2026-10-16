@@ -134,7 +134,7 @@ describe('external sync HTTP integration', () => {
       return { status: res.status, body: await res.json() }
     }
     try {
-      expect((await post('/external/config', { baseUrl: trackerUrl, account: 'alice', authMode: 'password', credentials: { username: 'alice-login', password: 'private-login-password' }, mappings: [{ projectId: '1', workspaceId: 'ws' }] })).status).toBe(200)
+      expect((await post('/external/config', { mappingMode: 'project', baseUrl: trackerUrl, account: 'alice', authMode: 'password', credentials: { username: 'alice-login', password: 'private-login-password' }, mappings: [{ projectId: 'project:1', workspaceId: 'ws' }] })).status).toBe(200)
       expect((await post('/external/test', {})).status).toBe(200)
       expect((await post('/external/sync', {})).body.value.created).toBe(1)
       const task = store.snapshot().tasks[0]!

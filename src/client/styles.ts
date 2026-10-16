@@ -10,6 +10,9 @@
 /** The stylesheet text. */
 export const STYLES = `
 .dsh-atb-external-mapping { display: flex; gap: 8px; margin: 12px 0; align-items: flex-end; }
+.dsh-atb-external-options { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 9px 0; font-size: 12px; }
+.dsh-atb-external .dsh-atb-external-options > label { flex: 0 0 auto; margin: 0; white-space: nowrap; }
+.dsh-atb-external-scope-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; overflow-wrap: anywhere; font-size: 12px; }
 .dsh-atb-external .dsh-atb-external-mapping > label { flex: 1; margin: 0; }
 .dsh-atb-external .dsh-atb-external-remove { flex: 0 0 36px; width: 36px; height: 36px; box-sizing: border-box; padding: 0; display: inline-flex; align-items: center; justify-content: center; align-self: flex-end; color: var(--dsw-text-secondary, #71717a); }
 .dsh-atb-external .dsh-atb-external-remove:hover:not(:disabled) { color: #dc2626; border-color: #fca5a5; background: rgba(239,68,68,.08); }

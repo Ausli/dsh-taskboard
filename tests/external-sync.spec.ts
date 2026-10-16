@@ -8,7 +8,7 @@ import { externalKey, mergeExternalFields, normalizeExternalSource, type Externa
 import { ZentaoProvider, trackerText } from '../src/host/zentao.ts'
 import { validateLedgerImport } from '../src/shared/protocol.ts'
 
-const item: ExternalItem = { projectId: '1', type: 'bug', id: '999999999999999999', title: 'Bug', description: 'Steps', urgency: 'normal', priority: '2', url: 'https://zentao.test/bug', assignedTo: 'alice', closed: false, status: 'active' }
+const item: ExternalItem = { projectId: 'project:1', type: 'bug', id: '999999999999999999', title: 'Bug', description: 'Steps', urgency: 'normal', priority: '2', url: 'https://zentao.test/bug', assignedTo: 'alice', closed: false, status: 'active' }
 const source: ExternalSource = { connectionId: 'c', provider: 'zentao', syncedAt: 1, item, conflicts: [] }
 const directories: string[] = []
 afterEach(async () => { await Promise.all(directories.splice(0).map(d => rm(d, { recursive: true, force: true }))) })
@@ -42,7 +42,7 @@ describe('sync service', () => {
     let fail = false
     const service = new ExternalSyncService({ file: join(dir, 'connection.json'), store, workspaceExists: id => id === 'ws',
       provider: () => ({ test: async () => {}, getItems: async () => { if (fail) throw new Error('private-external-token'); return items } }), now })
-    await service.configure({ baseUrl: 'https://zentao.test', account: 'alice', credentials: { username: 'alice', password: 'private-external-token' }, mappings: [{ projectId: '1', workspaceId: 'ws' }] })
+    await service.configure({ mappingMode: 'project', baseUrl: 'https://zentao.test', account: 'alice', credentials: { username: 'alice', password: 'private-external-token' }, mappings: [{ projectId: 'project:1', workspaceId: 'ws' }] })
     return { service, store, set: (v: ExternalItem[]) => { items = v }, fail: () => { fail = true } }
   }
   it('imports into todo only for new tasks and rejects unsupported destinations', async () => {
@@ -151,7 +151,7 @@ describe('sync service', () => {
         started()
         return new Promise<ExternalItem[]>((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
       } }) })
-    await service.configure({ baseUrl: 'https://zentao.test', account: 'alice', credentials: { username: 'alice', password: 'private-external-token' }, mappings: [{ projectId: '1', workspaceId: 'ws' }] })
+    await service.configure({ mappingMode: 'project', baseUrl: 'https://zentao.test', account: 'alice', credentials: { username: 'alice', password: 'private-external-token' }, mappings: [{ projectId: 'project:1', workspaceId: 'ws' }] })
     const running = service.sync()
     const rejection = expect(running).rejects.toThrow('External sync failed')
     await pending
@@ -174,8 +174,8 @@ describe('ZenTao provider', () => {
       urls.push(String(url))
       return new Response(JSON.stringify({ total: 2, bugs: [{ id: urls.length === 1 ? item.id : '2', title: 'Bug', status: 'active', assignedTo: { account: 'alice' }, pri: 1, steps: '<p>steps</p>' }] }))
     }) as typeof fetch
-    const provider = new ZentaoProvider({ id: 'c', provider: 'zentao', baseUrl: 'https://zentao.test', account: 'alice', authMode: 'password', credentials: { username: 'alice', password: 'private-external-token' }, settings: {}, itemTypes: ['bug'], mappings: [], intervalMinutes: 0, since: '' }, mock)
-    const items = await provider.getItems('1', AbortSignal.timeout(1000))
+    const provider = new ZentaoProvider({ id: 'c', provider: 'zentao', mappingMode: 'project', baseUrl: 'https://zentao.test', account: 'alice', authMode: 'password', credentials: { username: 'alice', password: 'private-external-token' }, settings: {}, itemTypes: ['bug'], mappings: [], intervalMinutes: 0, since: '' }, mock)
+    const items = await provider.getItems('project:1', AbortSignal.timeout(1000))
     expect(items).toHaveLength(2); expect(items[0]!.id).toBe(item.id)
     expect(urls[1]).toContain('page=2')
     expect(items[0]).toMatchObject({ urgency: 'urgent', description: 'steps', assignedTo: 'alice' })

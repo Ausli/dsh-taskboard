@@ -42,7 +42,7 @@ export class ExternalSyncService {
       const raw = JSON.parse(await readFile(this.options.file, 'utf8')) as SyncState & Partial<ExternalSyncRecord>
       if (raw.config) {
         if (typeof raw.config.id !== 'string' || !raw.config.id) throw new Error('invalid connection identity')
-        this.state.config = { ...normalizeConnection(raw.config, this.registry), id: raw.config.id }
+        this.state.config = { ...normalizeConnection(raw.config, this.registry, undefined, false, true), id: raw.config.id }
       }
       await this.options.store.load()
       // Move existing non-secret metadata once; token-only authentication is still rejected above.
@@ -80,6 +80,7 @@ export class ExternalSyncService {
     const credentialValues = Object.fromEntries((mode?.fields ?? []).filter(f => f.secret === false).map(f => [f.key, this.state.config!.credentials[f.key] ?? '']))
     const record = config ? this.options.store.snapshot().externalSync?.[config.id] : undefined
     return { config, credentialPresent, credentialValues, providers: this.registry.list(), running: this.running,
+      requiresMappingReview: config?.provider === 'zentao' && !config.mappingMode,
       lastResult: record?.lastResult, lastError: this.volatileError ?? record?.lastError, lastAttemptAt: record?.lastAttemptAt, ignoredCount: record?.ignored.length ?? 0 }
   }
   async configure(raw: unknown): Promise<void> {
@@ -88,7 +89,7 @@ export class ExternalSyncService {
     await this.serial(async () => {
       if (this.running) throw new Error('sync is running')
       const config = normalizeConnection(raw, this.registry, this.state.config)
-      if (config.mappings.some(m => !this.options.workspaceExists(m.workspaceId))) throw new Error('unknown workspace')
+      if (config.mappings.some(m => m.workspaceId ? !this.options.workspaceExists(m.workspaceId) : !config.includeUnmapped)) throw new Error('unknown workspace')
       const old = this.state
       this.state = { config }
       try { await this.persist() } catch (e) { this.state = old; throw e }
@@ -137,14 +138,16 @@ export class ExternalSyncService {
   private async tick(): Promise<void> {
     await this.ready
     const interval = this.state.config?.intervalMinutes ?? 0
+    if (this.state.config?.provider === 'zentao' && !this.state.config.mappingMode) return
     if (interval && !this.running && this.now() - this.lastAttempt >= interval * 60_000) await this.sync()
   }
   dispose(): void { this.disposed = true; if (this.timer) clearInterval(this.timer); this.controller?.abort() }
   cancel(): void { this.controller?.abort() }
-  async test(): Promise<void> {
+  async test(raw?: unknown): Promise<void> {
     await this.ready
-    if (!this.state.config) throw new Error('configure a connection first')
-    await this.provider(this.state.config).test(AbortSignal.timeout(30_000))
+    const config = raw ? normalizeConnection(raw, this.registry, this.state.config, true) : this.state.config
+    if (!config) throw new Error('configure a connection first')
+    await this.provider(config).test(AbortSignal.timeout(30_000))
   }
   private provider(config: ExternalConfig): ExternalTaskProvider { return this.options.provider?.(config) ?? this.registry.create(config) }
   async discoverProjects(raw?: unknown) {
@@ -169,6 +172,7 @@ export class ExternalSyncService {
     if (this.disposed) throw new Error('sync service stopped')
     if (this.running) throw new Error('sync is already running')
     if (!this.state.config) throw new Error('configure a connection first')
+    if (this.state.config.provider === 'zentao' && !this.state.config.mappingMode) throw new Error('reassociate projects or executions before synchronizing')
     this.running = true
     this.lastAttempt = this.now()
     const config = structuredClone(this.state.config)
@@ -179,10 +183,21 @@ export class ExternalSyncService {
     try {
       await this.options.store.load()
       const provider = this.provider(config)
+      let mappings = config.mappings
+      if (config.provider === 'zentao' && config.includeUnmapped) {
+        if (!provider.listProjects) throw new Error('scope discovery is required for unmapped synchronization')
+        const scopes = await provider.listProjects(signal)
+        const associated = new Map(config.mappings.filter(m => m.workspaceId).map(m => [m.projectId, m]))
+        for (const scope of scopes) {
+          if (!new RegExp(`^${config.mappingMode}:\\d+$`).test(scope.id)) throw new Error('provider returned an unexpected mapping scope')
+          if (!associated.has(scope.id)) associated.set(scope.id, { projectId: scope.id, workspaceId: '' })
+        }
+        mappings = [...associated.values()]
+      }
       // Finish all pages before committing: a failed scan never infers deletion or advances state.
       const items: Array<{ item: ExternalItem; workspaceId: string }> = []
-      for (const mapping of config.mappings) {
-        if (!this.options.workspaceExists(mapping.workspaceId)) throw new Error('mapped workspace no longer exists')
+      for (const mapping of mappings) {
+        if (mapping.workspaceId && !this.options.workspaceExists(mapping.workspaceId)) throw new Error('mapped workspace no longer exists')
         const existing = new Map(this.options.store.snapshot().tasks.filter(t => t.external?.connectionId === config.id && t.external.item.projectId === mapping.projectId)
           .map(t => [JSON.stringify([t.external!.item.type, t.external!.item.id]), { item: t.external!.item, metadataOnly: t.trashedAt !== undefined || ['done', 'canceled', 'archived'].includes(t.status) }]))
         for (const item of await provider.getItems(mapping.projectId, signal, { existing })) {
@@ -226,10 +241,12 @@ export class ExternalSyncService {
               ledger.tasks.push(created); changed.push(created); byKey.set(key, created); links[key] = created.id; result.created++
             } else {
               links[key] = task.id
+              const workspaceChanged = config.provider === 'zentao' && task.workspaceId === '' && workspaceId !== ''
+              if (workspaceChanged) task.workspaceId = workspaceId
               if (task.status === 'done' || task.status === 'canceled') {
                 const old = task.external!.item
                 const statusChanged = ['status', 'assignedTo', 'assignees', 'closed'].some(key => JSON.stringify(old[key as keyof ExternalItem]) !== JSON.stringify(item[key as keyof ExternalItem]))
-                if (!statusChanged && !task.external!.conflicts.length) { result.unchanged++; continue }
+                if (!workspaceChanged && !statusChanged && !task.external!.conflicts.length) { result.unchanged++; continue }
                 task.external = { ...task.external!, item: { ...old, status: item.status, assignedTo: item.assignedTo, closed: item.closed,
                   ...(item.assignees !== undefined ? { assignees: item.assignees } : {}) }, conflicts: [], syncedAt: result.at }
                 if (item.assignees === undefined) delete task.external.item.assignees
@@ -242,7 +259,7 @@ export class ExternalSyncService {
               source.conflicts = merged.conflicts
               const previous = task.external!.item
               const sameItem = ([...new Set([...Object.keys(previous), ...Object.keys(item)])] as Array<keyof ExternalItem>).every(key => JSON.stringify(previous[key]) === JSON.stringify(item[key]))
-              if (sameItem && JSON.stringify(task.external!.conflicts) === JSON.stringify(source.conflicts)) { result.unchanged++; continue }
+              if (!workspaceChanged && sameItem && JSON.stringify(task.external!.conflicts) === JSON.stringify(source.conflicts)) { result.unchanged++; continue }
               Object.assign(task, merged.fields)
               task.external = source; task.version++; task.updatedAt = result.at
               changed.push(task); result.updated++

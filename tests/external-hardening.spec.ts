@@ -11,10 +11,10 @@ import { ExternalRequestThrottle } from '../src/host/external-http.ts'
 
 const directories: string[] = []
 afterEach(async () => { vi.restoreAllMocks(); vi.useRealTimers(); await Promise.all(directories.splice(0).map(d => rm(d, { recursive: true, force: true }))) })
-const item: ExternalItem = { projectId: '1', id: '1', type: 'bug', title: 'Bug', description: 'Original', urgency: 'normal',
+const item: ExternalItem = { projectId: 'project:1', id: '1', type: 'bug', title: 'Bug', description: 'Original', urgency: 'normal',
   priority: '2', status: 'active', assignedTo: 'alice', closed: false, url: 'https://zentao.test/bug/1' }
-const config = { provider: 'zentao', baseUrl: 'https://zentao.test', account: 'alice', authMode: 'password',
-  credentials: { username: 'alice', password: 'private-password' }, mappings: [{ projectId: '1', workspaceId: 'ws' }] }
+const config = { provider: 'zentao', mappingMode: 'project', baseUrl: 'https://zentao.test', account: 'alice', authMode: 'password',
+  credentials: { username: 'alice', password: 'private-password' }, mappings: [{ projectId: 'project:1', workspaceId: 'ws' }] }
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), 'external-hardening-')); directories.push(dir)
   const file = join(dir, 'config.json'); const ledgerFile = join(dir, 'tasks.json')
@@ -27,6 +27,104 @@ async function fixture() {
 }
 
 describe('durable single-ledger synchronization', () => {
+  it.each(['project', 'execution'] as const)('fills empty destinations after associating %s without replacing assigned destinations', async mappingMode => {
+    const f = await fixture(); f.service.dispose()
+    const scope = `${mappingMode}:1`
+    const service = new ExternalSyncService({ ...f.options, provider: () => ({ test: async () => {},
+      listProjects: async () => [{ id: scope, name: 'Scope' }],
+      getItems: async () => Array.from({ length: 6 }, (_, index) => ({ ...item, projectId: scope, id: String(index + 1) })),
+    }) })
+    try {
+      await service.configure({ ...config, mappingMode, includeUnmapped: true, mappings: [] })
+      expect(await service.sync()).toMatchObject({ created: 6 })
+      const ids = f.store.snapshot().tasks.map(t => t.id)
+      await f.store.mutate('task-updated', ledger => {
+        ledger.tasks[1]!.workspaceId = 'manual'
+        ledger.tasks[2]!.status = 'done'
+        ledger.tasks[3]!.status = 'canceled'
+        ledger.tasks[4]!.status = 'archived'
+        ledger.tasks[5]!.trashedAt = 1000
+        return ledger.tasks
+      })
+      await service.configure({ ...config, mappingMode, includeUnmapped: false, mappings: [{ projectId: scope, workspaceId: 'ws' }] })
+      expect(await service.sync()).toMatchObject({ created: 0, updated: 3, unchanged: 2, ignored: 1 })
+      expect(f.store.snapshot().tasks.map(t => t.id)).toEqual(ids)
+      expect(f.store.snapshot().tasks.map(t => t.workspaceId)).toEqual(['ws', 'manual', 'ws', 'ws', '', ''])
+      expect(await service.sync()).toMatchObject({ created: 0, updated: 0, unchanged: 5, ignored: 1 })
+      const reloaded = new TaskStore({ file: f.ledgerFile }); await reloaded.load()
+      expect(reloaded.snapshot().tasks.map(t => t.workspaceId)).toEqual(['ws', 'manual', 'ws', 'ws', '', ''])
+    } finally { service.dispose() }
+  })
+  it.each(['project', 'execution'] as const)('discovers unmapped %s scopes every round and creates projectless cards', async mappingMode => {
+    const f = await fixture(); f.service.dispose()
+    let scopes = [`${mappingMode}:1`, `${mappingMode}:2`]; let title = 'Bug'; let discoveryFails = false
+    const options = { ...f.options, workspaceExists: (id: string) => { expect(id).not.toBe(''); return id === 'ws' },
+      provider: () => ({ test: async () => {},
+        listProjects: async () => { if (discoveryFails) throw new Error('discovery failed'); return scopes.map(id => ({ id, name: 'Scope' })) },
+        getItems: async (projectId: string) => [{ ...item, projectId, title }],
+      }) }
+    const service = new ExternalSyncService(options)
+    try {
+      await service.configure({ ...config, mappingMode, includeUnmapped: true, mappings: [{ projectId: scopes[0], workspaceId: 'ws' }, { projectId: scopes[1], workspaceId: '' }] })
+      expect(await service.sync()).toMatchObject({ created: 2 })
+      expect(f.store.snapshot().tasks.map(t => t.workspaceId)).toEqual(['ws', ''])
+      expect((await service.sync()).created).toBe(0)
+      const reloaded = new TaskStore({ file: f.ledgerFile }); await reloaded.load()
+      expect(reloaded.snapshot().tasks.map(t => t.workspaceId)).toEqual(['ws', ''])
+      expect(validateLedgerImport(reloaded.snapshot(), new Set(), 1000).create).toHaveLength(2)
+      scopes = [...scopes, `${mappingMode}:3`]
+      expect((await service.sync()).created).toBe(1)
+      expect(f.store.snapshot().tasks[2]!.workspaceId).toBe('')
+      title = 'Changed'; expect((await service.sync()).updated).toBe(3)
+      const unlinked = f.store.snapshot().tasks[1]!
+      discoveryFails = true
+      await expect(service.sync()).rejects.toThrow('External sync failed')
+      expect(f.store.snapshot().tasks[1]).toEqual(unlinked)
+      await service.configure({ ...config, mappingMode, includeUnmapped: false, mappings: [{ projectId: scopes[0], workspaceId: 'ws' }, { projectId: scopes[1], workspaceId: '' }] })
+      title = 'Changed again'; expect((await service.sync()).updated).toBe(1)
+      expect(f.store.snapshot().tasks[1]).toEqual(unlinked)
+      expect(JSON.parse(await readFile(f.file, 'utf8')).config.includeUnmapped).toBe(false)
+      await service.configure({ ...config, mappingMode, includeUnmapped: true, mappings: [] })
+      expect((await service.status()).config).toMatchObject({ includeUnmapped: true, mappings: [] })
+    } finally { service.dispose() }
+  })
+  it('retains old product credentials and tasks but pauses polling until explicitly reassociated', async () => {
+    const f = await fixture(); await f.service.sync(); f.service.dispose()
+    const saved = JSON.parse(await readFile(f.file, 'utf8'))
+    delete saved.config.mappingMode; saved.config.mappings[0].projectId = '1'; saved.config.intervalMinutes = 5
+    await writeFile(f.file, JSON.stringify(saved))
+    await f.store.mutate('task-updated', ledger => {
+      ledger.tasks[0]!.external!.item.projectId = '1'
+      ledger.externalSync![saved.config.id]!.links = { [externalKey(saved.config.id, ledger.tasks[0]!.external!.item)]: ledger.tasks[0]!.id }
+      return [ledger.tasks[0]!]
+    })
+    const oldTasks = f.store.snapshot().tasks; let reads = 0
+    const service = new ExternalSyncService({ ...f.options, now: () => Date.now(), provider: () => ({ test: async () => {}, getItems: async () => { reads++; return [item] } }) })
+    try {
+      expect(await service.status()).toMatchObject({ requiresMappingReview: true, credentialPresent: { password: true }, credentialValues: { username: 'alice' } })
+      await expect(service.sync()).rejects.toThrow('reassociate')
+      vi.useFakeTimers(); service.start(); await vi.advanceTimersByTimeAsync(600_000); vi.useRealTimers()
+      expect(reads).toBe(0); expect(f.store.snapshot().tasks).toEqual(oldTasks)
+      expect(JSON.parse(await readFile(f.file, 'utf8'))).toEqual(saved)
+      await service.configure({ ...saved.config, mappingMode: 'project', mappings: [{ projectId: 'project:1', workspaceId: 'ws' }], credentials: {} })
+      expect((await service.status()).config!.id).toBe(saved.config.id)
+      expect((await service.status()).requiresMappingReview).toBe(false)
+      expect((await service.sync()).created).toBe(1)
+      expect(f.store.snapshot().tasks[0]).toEqual(oldTasks[0])
+    } finally { service.dispose(); vi.useRealTimers() }
+  })
+  it('tests unsaved form credentials without overwriting the saved connection', async () => {
+    const f = await fixture(); const tested: string[] = []
+    const service = new ExternalSyncService({ ...f.options, provider: c => ({ test: async () => { tested.push(c.credentials.username!) }, getItems: async () => [] }) })
+    const saved = await readFile(f.file, 'utf8')
+    await service.test({ ...config, account: 'bob', credentials: { username: 'bob', password: 'unsaved-password' }, mappings: [] })
+    await service.test()
+    expect(tested).toEqual(['bob', 'alice'])
+    expect((await service.status()).config!.account).toBe('alice')
+    expect(await readFile(f.file, 'utf8')).toBe(saved)
+    expect(f.store.snapshot().tasks).toHaveLength(0)
+    service.dispose(); f.service.dispose()
+  })
   it('commits tasks and deletion links together without a second configuration-file write', async () => {
     const f = await fixture()
     const saved = await readFile(f.file, 'utf8')
@@ -141,7 +239,7 @@ describe('request pressure', () => {
       return new Response(JSON.stringify({ id: '1', product: '1', steps: 'Linked details' }))
     }) as typeof fetch
     const provider = new ZentaoProvider(normalizeExternalConfig({ ...config, settings: { requestIntervalMs: '0' } }), mock)
-    const items = await provider.getItems('1', AbortSignal.timeout(1000), { existing: new Map([[JSON.stringify(['bug', '1']), { item, metadataOnly: false }]]) })
+    const items = await provider.getItems('project:1', AbortSignal.timeout(1000), { existing: new Map([[JSON.stringify(['bug', '1']), { item, metadataOnly: false }]]) })
     expect(items).toHaveLength(1); expect(items[0]).toMatchObject({ assignedTo: 'bob', description: 'Linked details' })
     expect(calls.filter(p => /\/bugs\/\d/.test(p))).toHaveLength(1)
   })

@@ -122,11 +122,11 @@ describe('ExecutionService', () => {
     await store.mutate('settings-updated', ledger => { ledger.settings = { defaultIsolation: isolation }; return [] })
     const sync = new ExternalSyncService({ file: join(dir, `external-execution-${provider}-${isolation}.json`), store,
       workspaceExists: id => id === 'ws-a', provider: () => ({ test: async () => {}, getItems: async () => [{
-        projectId: '1', type: 'bug', id: '100', title: 'Imported bug', description: 'Reproduce and fix', urgency: 'urgent',
+        projectId: provider === 'zentao' ? 'project:1' : '1', type: 'bug', id: '100', title: 'Imported bug', description: 'Reproduce and fix', urgency: 'urgent',
         priority: '1', url: 'https://zentao.test/bug/100', status: 'active', assignedTo: 'alice', closed: false,
       }] }) })
-    await sync.configure({ provider, baseUrl: `https://${provider}.test`, account: 'alice', authMode: provider === 'tapd' ? 'bearer' : 'password',
-      credentials: provider === 'tapd' ? { accessToken: 'private-token' } : { username: 'alice', password: 'private-token' }, mappings: [{ projectId: '1', workspaceId: 'ws-a' }] })
+    await sync.configure({ provider, mappingMode: provider === 'zentao' ? 'project' : undefined, baseUrl: `https://${provider}.test`, account: 'alice', authMode: provider === 'tapd' ? 'bearer' : 'password',
+      credentials: provider === 'tapd' ? { accessToken: 'private-token' } : { username: 'alice', password: 'private-token' }, mappings: [{ projectId: provider === 'zentao' ? 'project:1' : '1', workspaceId: 'ws-a' }] })
     await sync.sync()
     const id = store.snapshot().tasks[0]!.id
     await store.mutate('task-moved', ledger => { ledger.tasks[0]!.status = 'todo'; return [ledger.tasks[0]!] })

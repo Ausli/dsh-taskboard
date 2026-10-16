@@ -10,16 +10,15 @@ const validateNumericProjects = (config: ExternalConfig) => {
 /** Add new providers here; synchronization and UI consume descriptors without platform branches. */
 export function createBuiltinProviders(): ExternalProviderRegistry {
   return new ExternalProviderRegistry().register({
-    descriptor: { id: 'zentao', name: 'ZenTao', scopeLabel: 'ext.product', defaultBaseUrl: '',
+    descriptor: { id: 'zentao', name: 'ZenTao', scopeLabel: 'ext.projectId', defaultBaseUrl: '',
       settingsFields: [{ key: 'requestIntervalMs', label: 'ext.requestInterval', defaultValue: '200' }],
       authModes: [
         { id: 'password', label: 'ext.usernamePassword', fields: [{ key: 'username', label: 'ext.username', secret: false }, { key: 'password', label: 'ext.password' }] },
       ],
       capabilities: { itemTypes: ['bug', 'story', 'task'], projectDiscovery: true, accountDiscovery: false, pagination: 'page', incremental: false } },
     validate: config => {
-      if (config.mappings.some(m => !/^(execution:)?\d+$/.test(m.projectId))) throw new Error('ZenTao requires numeric product/execution IDs')
-      if (config.mappings.length && config.itemTypes.includes('task') && !config.mappings.some(m => m.projectId.startsWith('execution:'))) throw new Error('ZenTao tasks require an execution mapping')
-      if (config.mappings.length && config.itemTypes.some(t => t !== 'task') && !config.mappings.some(m => !m.projectId.startsWith('execution:'))) throw new Error('ZenTao bugs/stories require a product mapping')
+      const pattern = config.mappingMode ? new RegExp(`^${config.mappingMode}:\\d+$`) : /^(execution:)?\d+$/
+      if (config.mappings.some(m => !pattern.test(m.projectId))) throw new Error('ZenTao mapping IDs must match the selected mapping mode')
       const interval = Number(config.settings.requestIntervalMs ?? 200)
       if (!Number.isInteger(interval) || interval < 0 || interval > 10_000) throw new Error('request interval must be 0–10000 milliseconds')
     },

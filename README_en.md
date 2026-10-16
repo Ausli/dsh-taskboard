@@ -13,7 +13,7 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 - **Git worktree isolation**: each run works on its own worktree + dedicated task branch, one-click merge at acceptance; parallel multi-repo workspaces are mirrored whole (0.6.3); non-git projects fall back automatically
 - **Efficient acceptance**: DoD acceptance checklists (agent checks items off with evidence), structured execution reports (summary / changed files / checks / artifacts / risks), in-board diff viewer
 - **Live board**: SSE real-time refresh, five-column flow, persisted filters & sorting, JSON import/export, task templates
-- **External task sync**: ZenTao product Bugs/Stories, execution Tasks and TAPD Bugs/Stories/Tasks, with assignee filtering, polling, project mapping and conflict protection. See External task sync below.
+- **External task sync**: ZenTao project/execution Bugs, Stories and Tasks, plus TAPD Bugs/Stories/Tasks, with assignee filtering, polling, project mapping and conflict protection. See External task sync below.
 
 **Zero configuration**: install and it works — no tokens, no API keys, no extra services or databases.
 
@@ -242,20 +242,34 @@ node tests/manual-git-e2e.mjs   # real-git end-to-end manual test (full worktree
 
 `npm run build` cleans stale files from `lib/` before generating the host ESM modules and the client registration module, `lib/client.js`. `npm run build:host` and `npm run build:client` rebuild only their respective half and preserve the other half's output; run the full build before publishing.
 
-## External task sync (0.9.0)
+## External task sync
 
-Supports ZenTao REST API v1 product Bugs/Stories and execution Tasks, plus TAPD Bugs/Stories/Tasks. ZenTao real-deployment reads were validated on 2026-10-16: 4 Bugs, 7 Stories and 8 Tasks. Filtering for admin imported 2 Bugs and 2 Tasks; the second sync created or updated nothing. All 7 Stories were unassigned and correctly excluded; assigned Story imports are covered by mock integration tests. TAPD remains locally mock-validated only.
+ZenTao supports project or execution/iteration mapping for Bugs, Stories and Tasks. TAPD supports Bugs, Stories and Tasks. Both ZenTao modes have passed read-only real-deployment checks; TAPD remains locally mock-validated.
 
-1. Open settings and select **External sync** in the left sidebar. Existing options are under **General**.
-2. For ZenTao, enter the installation URL without `/api.php/v1`, a login username and password. **Sync tasks assigned to this login account** is selected by default; uncheck it to enter another assignee's account.
-3. TAPD defaults to `https://api.tapd.cn`, supports API Basic Auth or Bearer Token, and requires a separate assignee nickname. Project discovery also requires a company ID.
-4. Map external scopes to local workspaces and select item types. For ZenTao, choose Product (Bugs/Stories) or Execution (Tasks) on each mapping row and enter the respective ID. Syncing all types requires both scope kinds. Equal product and execution IDs remain distinct; existing product mappings are preserved. Discovery lists products and project executions according to selected types. Save, test, then sync. Polling is disabled at 0 or enabled at 5–1440 minutes; the host must remain running.
+1. Open **External sync** in settings. ZenTao uses its installation URL without `/api.php/v1`, username and password. Reuse the login username as assignee by default, or enter another assignee. TAPD uses API Basic Auth or Bearer Token and a separate member nickname.
+2. Select the **Sync scope** (Bugs, Stories, Tasks), import destination (Backlog or Todo) and polling interval (0 disables polling; otherwise 5–1440 minutes).
+3. Choose **Link projects** (default) or **Link executions/iterations**, then **Sync project/execution list**. Discovery lists all readable entries for that mode, independent of selected item types.
+4. Each row shows the name, ID and local project selector; execution names include their parent project. **Not linked** rows are excluded by default. Refresh preserves associations and flags previously linked entries that are no longer readable. Changing mode clears the mapping draft; saved configuration stays active until explicitly saved.
+5. **Test connection** uses the current form without saving. Save configuration, then sync tasks. Empty mappings can be saved; they import nothing unless unlinked synchronization is enabled. Polling requires a running host and uses saved settings.
 
-Choose Backlog (default) or Todo under **Import into**. This only affects new tasks and does not directly start execution or change existing task statuses. Sync reads external systems without writing back. Title, description and urgency use three-way merging; local conflicts are retained for resolution in task details. Running/review cards retain their content. Completed/canceled cards update only source status and assignees; archived cards stop updating. Deleted tasks are excluded from automatic reimport; exclusions can be cleared. Source links open the external tracker.
+Project mode reads project Bugs/Stories and aggregates Tasks from all project executions, deduplicating within that project. Execution mode reads selected types directly from the execution. New imports filter by assignee and terminal state. The same Story can create separate cards under separate execution mappings. Mapping modes retain independent source identities; old cards are not merged or removed. Existing nonempty local destinations and execution states are preserved. Content uses three-way merge and existing running/terminal protections; deletion exclusions remain scoped to each mapping.
 
-Connections and credentials are stored in the host-only plaintext `dsh-taskboard-external.json` under active DSH_HOME; protect this file. Passwords/tokens are excluded from public status and task exports. ZenTao obtains and reuses an in-memory token; old token-only configurations are unsupported. Source links, exclusions and results commit atomically with tasks and follow board backups; migrate connection credentials separately. Only one active connection is supported. Screenshots, attachments, webhooks and status write-back are not included.
+**Sync unlinked projects** / **Sync unlinked executions/iterations** is off by default. When enabled, every scan discovers all readable scopes, including newly created entries and rows without local associations. New cards from those scopes have no local project; linked scopes still use their configured destination. After a scope is associated and saved, the next sync fills empty card destinations without creating duplicates. Nonempty destinations, archived cards and trashed cards are preserved. Saving with no associations is supported in this mode. Turning it off stops future unlinked scans without deleting cards.
+
+Old ZenTao connections without a mapping mode retain credentials and tasks but pause automatic sync and require reassociation. Product IDs are never reinterpreted as project IDs. Refresh, associate and save to resume.
+
+Credentials remain in the host-only plaintext `dsh-taskboard-external.json` under active DSH_HOME; protect this file. Passwords/tokens are excluded from public status and task exports. ZenTao obtains in-memory tokens; old token-only configurations are unsupported. Task and sync metadata persistence is atomic. One active connection is supported; screenshots, attachments, webhooks and write-back are excluded.
+
+Real-deployment validation on 2026-10-16 read 4 Bugs, 4 linked Stories and 8 Tasks in project mode, with corresponding execution results. Each mode imported 2 Bugs and 2 Tasks for admin; repeat scans created or updated nothing. No Stories were assigned to that account, so assigned Story imports remain covered by mock tests. Only temporary local ledgers were written; tracker business data was not changed.
 
 ## Changelog
+
+### 0.9.1
+
+- Map ZenTao projects or executions/iterations, independently select Bugs/Stories/Tasks, and associate local projects row by row.
+- Optionally sync unlinked/new scopes into projectless cards. Legacy product configurations retain credentials/tasks and require reassociation.
+- Test the current form, save empty mappings, and improve settings layout and copy.
+- Fix card session navigation and reruns for unheld in-progress cards without a running execution (#50).
 
 ### 0.9.0
 

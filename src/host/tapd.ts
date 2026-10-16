@@ -37,6 +37,7 @@ export class TapdProvider implements ExternalTaskProvider {
     return response.data
   }
   async test(signal: AbortSignal): Promise<void> {
+    if (!this.config.mappings.length) { await this.listProjects(signal); return }
     for (const mapping of this.config.mappings) for (const type of this.config.itemTypes) {
       await this.get(TYPES[type]!.endpoint, { workspace_id: mapping.projectId, limit: '1', fields: 'id' }, signal)
     }

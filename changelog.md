@@ -1,9 +1,24 @@
 # 更新日志 / Changelog
 
-### Unreleased
+### 0.9.1 — 2026-10-16
 
-- **禅道需求与开发任务**：补齐 REST API v1 产品研发需求和执行任务读取、分页、详情及验收条件、处理人/状态/优先级转换。映射区分产品与执行，支持执行发现，保留旧 Bug 来源标识和本地执行状态。新增功能通过模拟测试和真实环境读取验证；实测按 admin 导入 2 个 Bug、2 个任务，重复同步无新增/更新。读取到的 7 条需求均未指派，按处理人导入仍由模拟测试覆盖。
-- **ZenTao Stories and Tasks**: add product Stories and execution Tasks with pagination, details/acceptance text and field normalization. Add product/execution mapping scopes and execution discovery while preserving Bug identities and local status. Validated with mocks and real-deployment reads: 2 Bugs and 2 Tasks imported for admin with no changes on repeat. All 7 readable Stories were unassigned; assigned Story import remains mock-tested.
+- **同步未关联范围**：禅道新增随映射方式变化的勾选项，默认关闭；开启后动态发现未关联和新增项目/执行，导入空工作项目卡片。补齐空项目禅道卡片的账本重载和备份导入支持，后续关联后自动补齐已有空项目卡片的归属，非空归属、已归档和回收站卡片保持不变。
+
+- **禅道项目与执行/迭代映射**：在「导入到」后新增互斥映射方式，清单获取后逐行关联本地项目；未开启“同步未关联”时跳过未关联行，刷新保留选择、标记不可用项。「同步范围」独立选择缺陷、需求、任务。项目模式汇总所有执行任务；执行模式直接同步三类工作项。不同映射可分别建卡，相同映射内去重；旧产品配置保留凭据和任务，暂停自动同步并提示重新关联。
+- **设置交互**：「测试连接」使用当前表单配置且不保存；「保存配置」单独保存。按钮依次为测试连接、同步项目/执行迭代清单。TAPD 保留现有映射方式。
+- **真实环境验证**：两种模式均完成只读联调，分别按 admin 导入 2 个缺陷和 2 个开发任务，重复同步无新增/更新；4 条关联需求的列表和详情读取通过，因未指派给该账号而不导入。
+
+- **会话跳转与重跑（#50）**：统一卡片与详情页的会话解析；没有执行记录的 Agent 创建卡片也能跳回原会话。无人认领、没有运行中执行的进行中卡片可重新执行。
+
+**English:**
+
+- **Unlinked scopes**: optionally discover unmapped/new ZenTao projects or executions each scan and import cards without a local project. Fill empty card destinations after association while preserving nonempty destinations, archived and trashed cards; support durable reload and backup import of projectless ZenTao cards.
+
+- **ZenTao project/execution mapping**: add mutually exclusive mapping modes and a complete row-by-row association list. Preserve selections on refresh, flag unavailable entries and skip unlinked rows unless unlinked synchronization is enabled. Sync scope independently selects Bugs, Stories and Tasks; project Tasks aggregate all executions. Separate mappings can create separate cards, deduplicated within each mapping. Legacy product mappings preserve credentials/tasks but pause polling until reassociated.
+- **Settings**: test the current form without saving, save configuration separately, and place Test connection before Sync project/execution list. TAPD mapping behavior is retained.
+- **Live validation**: both modes imported 2 Bugs and 2 Tasks for admin with no changes on repeat. Four linked Stories were readable, but none was assigned to that account.
+
+- **Session navigation and reruns (#50)**: unify card/detail session resolution, restore navigation for agent-created cards without executions, and allow reruns for unheld in-progress cards with no running execution.
 
 ### 0.9.0 — 2026-10-16
 

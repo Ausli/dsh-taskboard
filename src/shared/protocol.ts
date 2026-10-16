@@ -1529,7 +1529,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
       ...(typeof e.executionsPruned === 'number' ? { executionsPruned: e.executionsPruned } : {}),
       ...(typeof e.trashedAt === 'number' ? { trashedAt: e.trashedAt } : {}),
     }
-    if (task.workspaceId.length === 0) return fail('missing workspaceId')
+    if (task.workspaceId.length === 0 && task.external?.provider !== 'zentao') return fail('missing workspaceId')
     return { ok: true, task }
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error))
@@ -1548,7 +1548,7 @@ export function isPlausibleTaskRecord(raw: unknown): boolean {
   const t = raw as Record<string, unknown>
   return typeof t.id === 'string' && isValidTaskId(t.id)
     && typeof t.title === 'string' && t.title.length > 0
-    && typeof t.workspaceId === 'string' && t.workspaceId.length > 0
+    && typeof t.workspaceId === 'string' && (t.workspaceId.length > 0 || normalizeExternalSource(t.external)?.provider === 'zentao')
     && ALL_STATUSES.includes(t.status as TaskStatus)
     && typeof t.version === 'number' && Number.isFinite(t.version) && t.version >= 1
     && Array.isArray(t.comments) && Array.isArray(t.executions)

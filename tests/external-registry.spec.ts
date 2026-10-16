@@ -61,7 +61,7 @@ describe('provider registry and migration', () => {
     expect(JSON.stringify(status)).not.toContain('legacy-secret')
     await expect(service.configure({ ...legacy, authMode: 'token', credentials: { token: 'legacy-secret' } })).rejects.toThrow('unsupported authentication')
     await expect(service.configure(legacy)).rejects.toThrow('enter credentials')
-    await service.configure({ ...legacy, credentials: { username: 'alice', password: 'new-private-password' } })
+    await service.configure({ ...legacy, mappingMode: 'project', mappings: [{ projectId: 'project:1', workspaceId: 'ws' }], credentials: { username: 'alice', password: 'new-private-password' } })
     const saved = JSON.parse(await readFile(file, 'utf8'))
     expect(saved.config).not.toHaveProperty('token')
     expect(saved.config.credentials).toEqual({ username: 'alice', password: 'new-private-password' })

@@ -685,7 +685,7 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
         try {
           let value: unknown = {}
           if (pathname === `${ROUTE_PREFIX}/external/config`) await options.externalSync.configure(body)
-          else if (pathname === `${ROUTE_PREFIX}/external/test`) await options.externalSync.test()
+          else if (pathname === `${ROUTE_PREFIX}/external/test`) await options.externalSync.test(Object.keys(body).length ? body : undefined)
           else if (pathname === `${ROUTE_PREFIX}/external/projects`) value = await options.externalSync.discoverProjects(body)
           else if (pathname === `${ROUTE_PREFIX}/external/account`) value = await options.externalSync.discoverAccount()
           else if (pathname === `${ROUTE_PREFIX}/external/sync`) value = await options.externalSync.sync()
