@@ -1,7 +1,5 @@
-# NOTE: lib/ build output IS committed (prebuilt) so github: installs work
-# with no build step and no build-script approval — ecosystem convention.
-# Ignore the obsolete intermediate left by older builds; full builds clean it.
-lib/client.cjs
+# Generated build output; build before packaging or running from source.
+/lib/
 
 # build scratch
 .tsc-check/
