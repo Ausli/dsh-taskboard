@@ -15,9 +15,11 @@ export function createBuiltinProviders(): ExternalProviderRegistry {
       authModes: [
         { id: 'password', label: 'ext.usernamePassword', fields: [{ key: 'username', label: 'ext.username', secret: false }, { key: 'password', label: 'ext.password' }] },
       ],
-      capabilities: { itemTypes: ['bug'], projectDiscovery: true, accountDiscovery: false, pagination: 'page', incremental: false } },
+      capabilities: { itemTypes: ['bug', 'story', 'task'], projectDiscovery: true, accountDiscovery: false, pagination: 'page', incremental: false } },
     validate: config => {
-      validateNumericProjects(config)
+      if (config.mappings.some(m => !/^(execution:)?\d+$/.test(m.projectId))) throw new Error('ZenTao requires numeric product/execution IDs')
+      if (config.mappings.length && config.itemTypes.includes('task') && !config.mappings.some(m => m.projectId.startsWith('execution:'))) throw new Error('ZenTao tasks require an execution mapping')
+      if (config.mappings.length && config.itemTypes.some(t => t !== 'task') && !config.mappings.some(m => !m.projectId.startsWith('execution:'))) throw new Error('ZenTao bugs/stories require a product mapping')
       const interval = Number(config.settings.requestIntervalMs ?? 200)
       if (!Number.isInteger(interval) || interval < 0 || interval > 10_000) throw new Error('request interval must be 0–10000 milliseconds')
     },

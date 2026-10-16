@@ -100,7 +100,7 @@ describe('provider-driven external UI', () => {
     expect(host.textContent).not.toContain('private-access-token')
     await choose(selects()[0]!, 'zentao')
     expect(selects()[1]!.value).toBe('password')
-    expect(host.querySelectorAll('input[type=checkbox]')).toHaveLength(2)
+    expect(host.querySelectorAll('input[type=checkbox]')).toHaveLength(4)
     expect(host.querySelector<HTMLInputElement>('input[type=password]')!.value).toBe('')
     await update(host.querySelector<HTMLInputElement>('input[autocomplete=username]')!, 'login-alice')
     const reuse = host.querySelector<HTMLInputElement>('input[type=checkbox]')!
@@ -115,6 +115,30 @@ describe('provider-driven external UI', () => {
     await act(async () => { reuse.click() })
     await act(async () => { buttonByText(host, /保存连接|Save connection/).click() })
     expect(calls.at(-1)!.body.account).toBe('login-alice')
+  })
+  it('submits a ZenTao execution mapping with only tasks selected', async () => {
+    let saved: Record<string, unknown> | undefined
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown, init?: RequestInit) => {
+      if (init?.method === 'POST') { saved = JSON.parse(String(init.body)); return new Response('{"ok":true,"value":{}}') }
+      return new Response(JSON.stringify({ ok: true, value: String(input).endsWith('/workspaces') ? [] : {
+        providers: createBuiltinProviders().list(), running: false, credentialPresent: {},
+      } }))
+    }))
+    const host = document.createElement('div'); document.body.append(host); root = createRoot(host)
+    await act(async () => { root!.render(createElement(ExternalSyncPanel)) })
+    await waitFor(() => host.querySelectorAll('input[type=checkbox]').length === 4)
+    const checks = host.querySelectorAll<HTMLInputElement>('input[type=checkbox]')
+    await act(async () => { checks[1]!.click(); checks[3]!.click() })
+    const mapping = host.querySelector('.dsh-atb-external-mapping')!
+    await choose(mapping.querySelector('select')!, 'execution')
+    const id = mapping.querySelector('input')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(id, '42')
+      id.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(id.value).toBe('42')
+    await act(async () => { buttonByText(host, /保存连接|Save connection/).click() })
+    expect(saved).toMatchObject({ itemTypes: ['task'], mappings: [{ projectId: 'execution:42' }] })
   })
   it.each(['alice', 'bob'])('restores saved assignee %s without replacing another account', async account => {
     vi.stubGlobal('fetch', vi.fn(async (input: unknown) => new Response(JSON.stringify({ ok: true, value: String(input).endsWith('/workspaces') ? [] : {

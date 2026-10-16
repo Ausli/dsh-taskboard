@@ -15,6 +15,10 @@ export const STYLES = `
 .dsh-atb-external .dsh-atb-external-remove:hover:not(:disabled) { color: #dc2626; border-color: #fca5a5; background: rgba(239,68,68,.08); }
 .dsh-atb-external .dsh-atb-external-remove:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
 .dsh-atb-external-mapping input, .dsh-atb-external-mapping select { height: 36px; }
+@media (max-width: 600px) {
+  .dsh-atb-external-mapping { flex-wrap: wrap; }
+  .dsh-atb-external .dsh-atb-external-mapping > .dsh-atb-external-scope { flex: 0 0 100%; }
+}
 .dsh-atb-external label { display: flex; flex-direction: column; gap: 5px; margin: 9px 0; min-width: 0; font-size: 12px; }
 .dsh-atb-external input, .dsh-atb-external select { box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid var(--dsw-border, #d4d4d8); border-radius: 6px; background: var(--dsw-bg, transparent); color: inherit; font: inherit; }
 .dsh-atb-external button { padding: 7px 10px; border: 1px solid var(--dsw-border, #d4d4d8); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; }

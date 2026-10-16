@@ -3,7 +3,7 @@ import type { ExternalTaskProvider, ExternalReadContext } from './external-provi
 import { externalGet, trackerText, ExternalRequestThrottle } from './external-http.ts'
 export { trackerText } from './external-http.ts'
 
-/** ZenTao REST API v1, product Bug lists. Product IDs form the mapping scope. */
+/** ZenTao REST API v1: product Bugs/Stories and execution Tasks. */
 export class ZentaoProvider implements ExternalTaskProvider {
   private token?: string
   private readonly throttle: ExternalRequestThrottle
@@ -38,82 +38,128 @@ export class ZentaoProvider implements ExternalTaskProvider {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw) || 'error' in raw) throw new Error('invalid ZenTao response')
     return raw as Record<string, unknown>
   }
-  async listProjects(signal: AbortSignal): Promise<ExternalProject[]> {
-    const projects: ExternalProject[] = []
-    const seen = new Set<string>()
+  private scope(projectId: string) {
+    const execution = projectId.startsWith('execution:')
+    const id = execution ? projectId.slice(10) : projectId
+    if (!/^\d+$/.test(id)) throw new Error('invalid ZenTao scope')
+    return { id, execution }
+  }
+  private types(projectId: string): string[] {
+    const { execution } = this.scope(projectId)
+    return this.config.itemTypes.filter(type => execution ? type === 'task' : type === 'bug' || type === 'story')
+  }
+  private listPath(projectId: string, type: string): string {
+    const { id, execution } = this.scope(projectId)
+    return `${execution ? 'executions' : 'products'}/${id}/${type === 'story' ? 'stories' : type + 's'}`
+  }
+  private async scopes(path: string, key: string, signal: AbortSignal): Promise<ExternalProject[]> {
+    const values: ExternalProject[] = []; const seen = new Set<string>()
     for (let page = 1; page <= 10_000; page++) {
-      const result = await this.get(`products?limit=100&page=${page}`, signal)
-      if (!Array.isArray(result.products)) throw new Error('invalid ZenTao product list')
+      const result = await this.get(`${path}?status=all&limit=100&page=${page}`, signal)
+      const rows = result[key]
+      if (!Array.isArray(rows)) throw new Error('invalid ZenTao scope list')
       let added = 0
-      for (const raw of result.products) {
-        if (!raw || typeof raw !== 'object') throw new Error('invalid ZenTao product')
+      for (const raw of rows) {
+        if (!raw || typeof raw !== 'object') throw new Error('invalid ZenTao scope')
         const p = raw as Record<string, unknown>
-        if (typeof p.id === 'number' && !Number.isSafeInteger(p.id)) throw new Error('unsafe product ID')
-        const id = String(p.id ?? '')
-        if (!/^\d+$/.test(id) || typeof p.name !== 'string') throw new Error('invalid ZenTao product fields')
-        if (!seen.has(id)) { seen.add(id); added++; projects.push({ id, name: p.name }) }
+        const id = this.id(p.id)
+        if (typeof p.name !== 'string') throw new Error('invalid ZenTao scope fields')
+        if (!seen.has(id)) { seen.add(id); added++; values.push({ id, name: p.name }) }
       }
-      if (!result.products.length || (typeof result.total === 'number' && seen.size >= result.total)) return projects
-      if (!added) throw new Error('ZenTao product pagination did not advance')
+      const total = Number(result.total)
+      if (!rows.length || (Number.isFinite(total) && seen.size >= total)) return values
+      if (!added) throw new Error('ZenTao scope pagination did not advance')
     }
-    throw new Error('ZenTao product pagination limit exceeded')
+    throw new Error('ZenTao scope pagination limit exceeded')
+  }
+  async listProjects(signal: AbortSignal): Promise<ExternalProject[]> {
+    const scopes: ExternalProject[] = []
+    if (this.config.itemTypes.some(t => t !== 'task')) scopes.push(...await this.scopes('products', 'products', signal))
+    if (this.config.itemTypes.includes('task')) {
+      for (const project of await this.scopes('projects', 'projects', signal)) {
+        for (const execution of await this.scopes(`projects/${project.id}/executions`, 'executions', signal)) {
+          if (!scopes.some(s => s.id === `execution:${execution.id}`)) scopes.push({ id: `execution:${execution.id}`, name: `${project.name} / ${execution.name}` })
+        }
+      }
+    }
+    return scopes
+  }
+  private id(raw: unknown): string {
+    if (typeof raw === 'number' && !Number.isSafeInteger(raw)) throw new Error('unsafe ZenTao numeric ID')
+    if ((typeof raw !== 'string' && typeof raw !== 'number') || !/^\d+$/.test(String(raw))) throw new Error('invalid ZenTao ID')
+    return String(raw)
+  }
+  private closed(type: string, status: string): boolean {
+    return (type === 'bug' ? ['closed', 'resolved'] : type === 'task' ? ['done', 'closed', 'cancel'] : ['closed']).includes(status)
+  }
+  private account(raw: unknown): string {
+    return typeof raw === 'object' && raw !== null ? String((raw as Record<string, unknown>).account ?? '') : String(raw ?? '')
+  }
+  private normalize(projectId: string, type: string, b: Record<string, unknown>): ExternalItem {
+    const id = this.id(b.id); const { id: scopeId, execution } = this.scope(projectId)
+    const scope = b[execution ? 'execution' : 'product']
+    if (scope !== undefined && this.id(scope) !== scopeId) throw new Error('unexpected ZenTao item scope')
+    const title = type === 'task' ? b.name : b.title
+    if (typeof title !== 'string' || !title.trim() || typeof b.status !== 'string') throw new Error('invalid ZenTao item fields')
+    const priority = String(b.pri ?? '')
+    const description = type === 'bug' ? trackerText(b.steps) : type === 'task' ? trackerText(b.desc)
+      : [trackerText(b.spec), trackerText(b.verify)].filter(Boolean).join('\n\n')
+    return { projectId, type, id, title: title.trim(), description, priority, status: b.status,
+      assignedTo: this.account(b.assignedTo), closed: this.closed(type, b.status),
+      urgency: priority === '1' ? 'urgent' : priority === '4' ? 'relaxed' : 'normal',
+      url: `${this.config.baseUrl}/index.php?m=${type}&f=view&${type}ID=${encodeURIComponent(id)}` }
+  }
+  private async detail(projectId: string, type: string, id: string, signal: AbortSignal): Promise<Record<string, unknown>> {
+    const result = await this.get(`${type === 'story' ? 'stories' : type + 's'}/${id}`, signal)
+    const b = result[type] && typeof result[type] === 'object' ? result[type] as Record<string, unknown> : result
+    const { id: scopeId, execution } = this.scope(projectId)
+    if (this.id(b.id) !== id || this.id(b[execution ? 'execution' : 'product']) !== scopeId) throw new Error('invalid ZenTao item details')
+    return b
   }
   async getItem(projectId: string, type: string, id: string, signal: AbortSignal): Promise<ExternalItem | undefined> {
-    if (type !== 'bug' || !/^\d+$/.test(id)) throw new Error('unsupported ZenTao work item')
-    const result = await this.get(`bugs/${encodeURIComponent(id)}`, signal)
-    const b = result.bug && typeof result.bug === 'object' ? result.bug as Record<string, unknown> : result
-    if (String(b.id) !== id || String(b.product) !== projectId || typeof b.title !== 'string' || typeof b.status !== 'string') throw new Error('invalid ZenTao Bug details')
-    const assigned = typeof b.assignedTo === 'object' && b.assignedTo !== null ? String((b.assignedTo as Record<string, unknown>).account ?? '') : String(b.assignedTo ?? '')
-    const priority = String(b.pri ?? '')
-    return { projectId, type, id, title: b.title, description: trackerText(b.steps), status: b.status, assignedTo: assigned,
-      priority, urgency: priority === '1' ? 'urgent' : priority === '4' ? 'relaxed' : 'normal', closed: ['closed', 'resolved'].includes(b.status),
-      url: `${this.config.baseUrl}/index.php?m=bug&f=view&bugID=${encodeURIComponent(id)}` }
+    if (!this.types(projectId).includes(type)) throw new Error('unsupported ZenTao work item')
+    this.id(id)
+    return this.normalize(projectId, type, await this.detail(projectId, type, id, signal))
   }
   async test(signal: AbortSignal): Promise<void> {
-    for (const mapping of this.config.mappings) {
-      const result = await this.get(`products/${encodeURIComponent(mapping.projectId)}/bugs?limit=1&page=1`, signal)
-      if (!Array.isArray(result.bugs)) throw new Error('unsupported ZenTao Bug API')
+    for (const mapping of this.config.mappings) for (const type of this.types(mapping.projectId)) {
+      const result = await this.get(`${this.listPath(mapping.projectId, type)}?status=${type === 'story' ? 'allstory' : 'all'}&limit=1&page=1`, signal)
+      if (!Array.isArray(result[type === 'story' ? 'stories' : type + 's'])) throw new Error('unsupported ZenTao work item API')
     }
   }
   async getItems(projectId: string, signal: AbortSignal, context?: ExternalReadContext): Promise<ExternalItem[]> {
     const items: ExternalItem[] = []
-    const seen = new Set<string>()
-    for (let page = 1; page <= 10_000; page++) {
-      // Full scan also observes previously imported bugs that were closed/reassigned.
-      const result = await this.get(`products/${encodeURIComponent(projectId)}/bugs?status=all&limit=100&page=${page}`, signal)
-      if (!Array.isArray(result.bugs)) throw new Error('invalid ZenTao Bug list')
-      let added = 0
-      for (const raw of result.bugs as unknown[]) {
-        if (!raw || typeof raw !== 'object') throw new Error('invalid ZenTao Bug')
-        const b = raw as Record<string, unknown>
-        if (typeof b.id === 'number' && !Number.isSafeInteger(b.id)) throw new Error('ZenTao numeric Bug ID exceeds safe integer range')
-        const id = String(b.id ?? '')
-        if (!/^\d+$/.test(id) || typeof b.title !== 'string' || !b.title.trim() || typeof b.status !== 'string') throw new Error('invalid ZenTao Bug fields')
-        if (seen.has(id)) continue
-        seen.add(id); added++
-        const opened = typeof b.openedDate === 'string' ? b.openedDate.slice(0, 10) : ''
-        if (this.config.since && opened && opened < this.config.since) continue
-        const assigned = typeof b.assignedTo === 'object' && b.assignedTo !== null
-          ? String((b.assignedTo as Record<string, unknown>).account ?? '') : String(b.assignedTo ?? '')
-        const previous = context?.existing.get(JSON.stringify(['bug', id]))
-        if (context && !previous && (assigned !== this.config.account || ['closed', 'resolved'].includes(b.status))) continue
-        if (b.steps === undefined && previous?.metadataOnly) b.steps = previous.item.description
-        if (b.steps === undefined) {
-          const detail = await this.get(`bugs/${encodeURIComponent(id)}`, signal)
-          const payload = detail.bug && typeof detail.bug === 'object' ? detail.bug as Record<string, unknown> : detail
-          if (typeof payload.steps !== 'string') throw new Error('ZenTao Bug description is missing')
-          b.steps = payload.steps
+    for (const type of this.types(projectId)) {
+      const seen = new Set<string>(); let completed = false
+      for (let page = 1; page <= 10_000; page++) {
+        const result = await this.get(`${this.listPath(projectId, type)}?status=${type === 'story' ? 'allstory' : 'all'}&limit=100&page=${page}`, signal)
+        const rows = result[type === 'story' ? 'stories' : type + 's']
+        if (!Array.isArray(rows)) throw new Error('invalid ZenTao item list')
+        let added = 0
+        for (const raw of rows) {
+          if (!raw || typeof raw !== 'object') throw new Error('invalid ZenTao item')
+          let b = raw as Record<string, unknown>; const id = this.id(b.id)
+          if (seen.has(id)) continue
+          seen.add(id); added++
+          const listed = this.normalize(projectId, type, b)
+          const previous = context?.existing.get(JSON.stringify([type, id]))
+          const opened = typeof b.openedDate === 'string' ? b.openedDate.slice(0, 10) : ''
+          if (!previous && this.config.since && opened && opened < this.config.since) continue
+          if (context && !previous && (listed.assignedTo !== this.config.account || listed.closed)) continue
+          const missing = type === 'bug' ? b.steps === undefined : type === 'task' ? b.desc === undefined : b.spec === undefined || b.verify === undefined
+          if (missing && previous?.metadataOnly) { items.push({ ...listed, description: previous.item.description }); continue }
+          if (missing) {
+            b = { ...b, ...await this.detail(projectId, type, id, signal) }
+            if (type === 'bug' ? typeof b.steps !== 'string' : type === 'task' ? typeof b.desc !== 'string' : typeof b.spec !== 'string' || typeof b.verify !== 'string') throw new Error('ZenTao item description is missing')
+          }
+          items.push(this.normalize(projectId, type, b))
         }
-        const priority = String(b.pri ?? '')
-        items.push({ projectId, type: 'bug', id, title: b.title.trim(), description: trackerText(b.steps),
-          urgency: priority === '1' ? 'urgent' : priority === '4' ? 'relaxed' : 'normal', priority,
-          assignedTo: assigned, status: b.status, closed: ['closed', 'resolved'].includes(b.status),
-          url: `${this.config.baseUrl}/index.php?m=bug&f=view&bugID=${encodeURIComponent(id)}` })
+        const total = Number(result.total)
+        if (!rows.length || (Number.isFinite(total) && seen.size >= total)) { completed = true; break }
+        if (!added) throw new Error('ZenTao pagination did not advance')
       }
-      const total = typeof result.total === 'number' ? result.total : Number(result.total)
-      if (result.bugs.length === 0 || (Number.isFinite(total) && seen.size >= total)) return items
-      if (added === 0) throw new Error('ZenTao pagination did not advance')
+      if (!completed) throw new Error('ZenTao pagination limit exceeded')
     }
-    throw new Error('ZenTao pagination limit exceeded')
+    return items
   }
 }

@@ -44,7 +44,7 @@ describe('provider registry and migration', () => {
     const registry = createBuiltinProviders()
     expect(() => registry.register({ descriptor: { ...descriptor, id: 'tapd' }, create: () => ({ test: async () => {}, getItems: async () => [] }) })).toThrow('duplicate')
     const list = registry.list(); list[0]!.capabilities.itemTypes.push('accidental')
-    expect(registry.list()[0]!.capabilities.itemTypes).toEqual(['bug'])
+    expect(registry.list()[0]!.capabilities.itemTypes).toEqual(['bug', 'story', 'task'])
   })
   it('rejects old ZenTao token configurations and requires username/password setup', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'external-legacy-')); directories.push(dir)

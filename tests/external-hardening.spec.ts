@@ -138,7 +138,7 @@ describe('request pressure', () => {
         { id: '2', title: 'Unrelated', status: 'active', assignedTo: 'bob' },
         { id: '3', title: 'Closed', status: 'closed', assignedTo: 'alice' },
       ] }))
-      return new Response(JSON.stringify({ steps: 'Linked details' }))
+      return new Response(JSON.stringify({ id: '1', product: '1', steps: 'Linked details' }))
     }) as typeof fetch
     const provider = new ZentaoProvider(normalizeExternalConfig({ ...config, settings: { requestIntervalMs: '0' } }), mock)
     const items = await provider.getItems('1', AbortSignal.timeout(1000), { existing: new Map([[JSON.stringify(['bug', '1']), { item, metadataOnly: false }]]) })

@@ -107,7 +107,13 @@ export function ExternalSyncPanel() {
       </select></label>
       <p>{t('ext.importStatusHint')}</p>
       {mappings.map((m, index) => <div key={index} className="dsh-atb-external-mapping">
-        <label>{t(descriptor?.scopeLabel ?? 'ext.projectId')}<input list="dsh-atb-external-projects" value={m.projectId} onChange={e => setMappings(mappings.map((v, i) => i === index ? { ...v, projectId: e.target.value } : v))} /></label>
+        {providerId === 'zentao' && <label className="dsh-atb-external-scope">{t('ext.scopeType')}<select value={m.projectId.startsWith('execution:') ? 'execution' : 'product'}
+          onChange={e => setMappings(mappings.map((v, i) => i === index ? { ...v, projectId: (e.target.value === 'execution' ? 'execution:' : '') + v.projectId.replace(/^execution:/, '') } : v))}>
+          <option value="product">{t('ext.productScope')}</option><option value="execution">{t('ext.executionScope')}</option>
+        </select></label>}
+        <label>{t(providerId === 'zentao' && m.projectId.startsWith('execution:') ? 'ext.executionId' : descriptor?.scopeLabel ?? 'ext.projectId')}<input list={`dsh-atb-external-projects-${index}`} value={providerId === 'zentao' ? m.projectId.replace(/^execution:/, '') : m.projectId}
+          onChange={e => setMappings(mappings.map((v, i) => i === index ? { ...v, projectId: (providerId === 'zentao' && v.projectId.startsWith('execution:') ? 'execution:' : '') + e.target.value } : v))} /></label>
+        <datalist id={`dsh-atb-external-projects-${index}`}>{projects.filter(p => providerId !== 'zentao' || p.id.startsWith('execution:') === m.projectId.startsWith('execution:')).map(p => <option key={p.id} value={providerId === 'zentao' ? p.id.replace(/^execution:/, '') : p.id}>{p.name}</option>)}</datalist>
         <label>{t('ext.workspace')}<select value={m.workspaceId} onChange={e => setMappings(mappings.map((v, i) => i === index ? { ...v, workspaceId: e.target.value } : v))}>
           <option value="">—</option>{workspaces.map(ws => <option key={ws.id} value={ws.id}>{ws.title}</option>)}
         </select></label>
@@ -116,7 +122,7 @@ export function ExternalSyncPanel() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7" /></svg>
         </button>
       </div>)}
-      <datalist id="dsh-atb-external-projects">{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</datalist>
+      {providerId === 'zentao' && <p>{t('ext.scopeHint')}</p>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" onClick={() => setMappings([...mappings, { projectId: '', workspaceId: '' }])}>{t('ext.addMapping')}</button>
         {descriptor?.capabilities.projectDiscovery && <button type="button" onClick={() => void act('/projects', { ...draft(), mappings: [] })}>{t('ext.discoverProjects')}</button>}

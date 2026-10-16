@@ -1,5 +1,10 @@
 # 更新日志 / Changelog
 
+### Unreleased
+
+- **禅道需求与开发任务**：补齐 REST API v1 产品研发需求和执行任务读取、分页、详情及验收条件、处理人/状态/优先级转换。映射区分产品与执行，支持执行发现，保留旧 Bug 来源标识和本地执行状态。新增功能通过模拟测试和真实环境读取验证；实测按 admin 导入 2 个 Bug、2 个任务，重复同步无新增/更新。读取到的 7 条需求均未指派，按处理人导入仍由模拟测试覆盖。
+- **ZenTao Stories and Tasks**: add product Stories and execution Tasks with pagination, details/acceptance text and field normalization. Add product/execution mapping scopes and execution discovery while preserving Bug identities and local status. Validated with mocks and real-deployment reads: 2 Bugs and 2 Tasks imported for admin with no changes on repeat. All 7 readable Stories were unassigned; assigned Story import remains mock-tested.
+
 ### 0.9.0 — 2026-10-16
 
 - **导入目标**：外部同步可选择将新任务导入「待规划」或「待办」，默认待规划，已有任务状态不变。
