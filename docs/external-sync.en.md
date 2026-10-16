@@ -29,6 +29,3 @@ Only one active connection is stored. Not included: ZenTao stories/tasks, attach
 References: [v1 setup](https://www.zentao.net/book/api/1397.html), [product Bugs](https://www.zentao.net/book/api/720.html), [all statuses](https://www.zentao.net/ask/596733.html).
 
 TAPD references: [Bugs](https://open.tapd.cn/document/api-doc/API文档/api_reference/bug/get_bugs.html), [Stories](https://open.tapd.cn/document/api-doc/API文档/api_reference/story/get_stories.html), [Tasks](https://open.tapd.cn/document/api-doc/API文档/api_reference/task/get_tasks.html), [authentication/query/cursors](https://open.tapd.cn/document/api-doc/API文档/使用必读.html), [participant projects](https://open.tapd.cn/document/api-doc/API文档/api_reference/workspace/user_participant_projects.html).
-
-
-

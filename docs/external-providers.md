@@ -72,5 +72,3 @@ All mutations require the existing JSON request fence. Secret credential values 
 ## Required validation
 
 An adapter should cover authentication headers, success-envelope validation, pagination boundaries/non-advancement, string IDs, selected types, assignee matching, status/priority mapping, scope validation and error redaction. Integration tests must exercise the registry, configuration, real HTTP provider, host routes and TaskStore together. UI changes should preserve descriptor-driven behavior and old connection migration.
-
-

@@ -65,5 +65,3 @@ API 参考：
 - [用户参与项目](https://open.tapd.cn/document/api-doc/API文档/api_reference/workspace/user_participant_projects.html)
 
 扩展开发参见 [Provider 注册与契约](./external-providers.md)。
-
-

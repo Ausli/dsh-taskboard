@@ -168,5 +168,3 @@ describe('ZenTao provider', () => {
     expect(items[0]).toMatchObject({ urgency: 'urgent', description: 'steps', assignedTo: 'alice' })
   })
 })
-
-
