@@ -163,6 +163,47 @@ describe('ExecutionService', () => {
     expect(store.get(stopped.id)!.executions).toHaveLength(0)
   })
 
+  // Issue #50: moving a card back from review used to leave it in progress
+  // with nothing holding it, and the run gate refused on STATUS alone — so the
+  // only way forward was pushing it back through todo.
+  it('runs an unheld in-progress card again (the card repairs itself)', async () => {
+    const orphan = task({ status: 'in_progress', claimedBy: undefined, claimedAt: undefined })
+    const store = await storeWith(orphan)
+    const agents = fakeAgents()
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: () => 1_000 })
+
+    const result = await svc.run(orphan.id, 'manual')
+    expect(result.ok).toBe(true)
+    // The run re-claims the card, so the orphan state does not survive it.
+    const after = store.get(orphan.id)!
+    expect(after.status).toBe('in_progress')
+    expect(after.claimedBy).toBeDefined()
+    expect(after.claimedBy!.startsWith('session-')).toBe(true)
+    expect(after.executions).toHaveLength(1)
+    expect(after.executions[0]!.outcome).toBe('running')
+    svc.dispose()
+  })
+
+  it('still refuses a second runner: a held claim and a live execution each block', async () => {
+    const held = task({ id: 't-held', status: 'in_progress', claimedBy: 'session-holder-1', claimedAt: 1 })
+    const heldStore = await storeWith(held)
+    const heldSvc = new ExecutionService({ store: heldStore, agents: fakeAgents(), workspaces, events: fakeEvents(), now: () => 1_000 })
+    expect(await heldSvc.run(held.id, 'manual')).toEqual({ ok: false, error: 'task is already in progress' })
+    expect(heldStore.get(held.id)!.executions).toHaveLength(0)
+    heldSvc.dispose()
+
+    const live = task({
+      id: 't-live',
+      status: 'in_progress',
+      executions: [{ id: 'e-live', trigger: 'manual', startedAt: 0, outcome: 'running', sessionId: 'session-live-1' }],
+    })
+    const liveStore = await storeWith(live)
+    const liveSvc = new ExecutionService({ store: liveStore, agents: fakeAgents(), workspaces, events: fakeEvents(), now: () => 1_000 })
+    expect(await liveSvc.run(live.id, 'manual')).toEqual({ ok: false, error: 'task is already in progress' })
+    expect(liveStore.get(live.id)!.executions).toHaveLength(1)
+    liveSvc.dispose()
+  })
+
   it('runs a task in a fresh in-project session with the pinned model', async () => {
     const store = await storeWith(task({ model: { provider: 'deepseek', model: 'reasoner' } }))
     const agents = fakeAgents()
@@ -676,7 +717,13 @@ describe('ExecutionService', () => {
   })
 
   it('rejects a run on a running or unknown task', async () => {
-    const store = await storeWith(task({ status: 'in_progress' }))
+    // The fixture has to be genuinely RUNNING. It used to be a bare
+    // in_progress card, which conflated "labelled in progress" with "a runner
+    // exists" — the very conflation behind issue #50.
+    const store = await storeWith(task({
+      status: 'in_progress',
+      executions: [{ id: 'e-live', trigger: 'manual', startedAt: 0, outcome: 'running', sessionId: 'session-live-1' }],
+    }))
     const svc = new ExecutionService({ store, agents: fakeAgents(), workspaces, events: fakeEvents(), now: () => 1_000 })
     expect((await svc.run('t-run', 'manual')).ok).toBe(false)
     expect((await svc.run('nope', 'manual')).ok).toBe(false)

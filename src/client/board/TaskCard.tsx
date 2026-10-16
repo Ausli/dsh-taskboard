@@ -13,7 +13,7 @@
  */
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { BoardController } from '../controller.ts'
-import type { TaskRecord } from '../../shared/protocol.ts'
+import { taskSessionId, type TaskRecord } from '../../shared/protocol.ts'
 import { fmtTime, isStaleClaim } from './format.ts'
 import { OUTCOME_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
@@ -28,19 +28,13 @@ export function shortId(id: string | undefined): string {
   return id.replace(/^session-(taskboard-)?/, '').slice(0, 8)
 }
 
-/** Resolve the most relevant session ID associated with a task. */
-export function resolveTaskSessionId(task: TaskRecord): string | undefined {
-  const running = task.executions?.find(ex => ex.outcome === 'running')
-  if (running?.sessionId) return running.sessionId
-  const sessionExecution = task.executions ? [...task.executions].reverse().find(ex => ex.sessionId !== undefined) : undefined
-  if (sessionExecution?.sessionId) return sessionExecution.sessionId
-  if (task.claimedBy?.startsWith('session-')) return task.claimedBy
-  if (task.execution?.autoReuseSessionId) return task.execution.autoReuseSessionId
-  if (task.execution?.reuseSessionId) return task.execution.reuseSessionId
-  if (task.createdBy?.kind === 'agent' && task.createdBy.sessionId) return task.createdBy.sessionId
-  if (task.updatedBy?.kind === 'agent' && task.updatedBy.sessionId) return task.updatedBy.sessionId
-  return undefined
-}
+/**
+ * Resolve the most relevant session ID associated with a task.
+ * Thin alias over the shared {@link taskSessionId} so the card and the detail
+ * pane can never drift apart again (they had two copies, and the detail pane's
+ * copy had lost the originating-conversation fallback).
+ */
+export const resolveTaskSessionId = taskSessionId
 
 /**
  * The card view.
