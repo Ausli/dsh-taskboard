@@ -8,6 +8,7 @@
  * @module dsh-taskboard/client/board/TaskDetail
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ExternalSourcePanel } from './ExternalSourcePanel.tsx'
 import type { BoardController } from '../controller.ts'
 import type { CommentRecord, ExecutionRecord, TaskRecord } from '../../shared/protocol.ts'
 import { canTransition, checklistProgress, taskAssociatedSessionIds } from '../../shared/protocol.ts'
@@ -725,6 +726,7 @@ export function TaskDetail({ task, controller, now }: { task: TaskRecord; contro
         </div>
       </div>
 
+      {task.external && <ExternalSourcePanel task={task} />}
       {task.description.length > 0 && (
         <div className="dsh-atb-fieldcard">
           <div className="dsh-atb-fieldcard-label">{t('detail.field.description')}</div>

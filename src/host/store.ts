@@ -18,6 +18,7 @@ import {
   type TaskRecord,
 } from '../shared/protocol.ts'
 import type { StorageQueue } from './storage-queue.ts'
+import { normalizeExternalSource, normalizeExternalSyncRecords } from '../shared/external.ts'
 
 /** One committed ledger mutation, handed to change subscribers. */
 export interface LedgerChange {
@@ -26,7 +27,7 @@ export interface LedgerChange {
   /** The mutated tasks, if any (a comment purge may touch none). */
   tasks: readonly TaskRecord[]
   /** What kind of mutation this was (for SSE event naming later). */
-  kind: 'task-created' | 'task-updated' | 'task-moved' | 'task-deleted' | 'comment-added' | 'execution-recorded' | 'settings-updated' | 'ledger-replaced'
+  kind: 'task-created' | 'task-updated' | 'task-moved' | 'task-deleted' | 'comment-added' | 'execution-recorded' | 'settings-updated' | 'ledger-replaced' | 'external-sync-updated'
 }
 
 /** Options for {@link TaskStore}. */
@@ -122,6 +123,11 @@ export class TaskStore {
         // task carried its holder in updatedBy — backfill the explicit claim
         // fields so the hold survives user edits (updatedBy is audit-only).
         for (const task of tasks) {
+          if (task.external !== undefined) {
+            const external = normalizeExternalSource(task.external)
+            if (external === undefined) delete task.external
+            else task.external = external
+          }
           if (task.status === 'in_progress' && task.claimedBy === undefined
             && task.updatedBy?.kind === 'agent' && typeof task.updatedBy.sessionId === 'string') {
             task.claimedBy = task.updatedBy.sessionId
@@ -140,6 +146,7 @@ export class TaskStore {
           schemaVersion: LEDGER_SCHEMA_VERSION,
           revision: parsed.revision,
           tasks,
+          ...(parsed.externalSync !== undefined ? { externalSync: normalizeExternalSyncRecords(parsed.externalSync) } : {}),
           ...(settings !== undefined ? { settings } : {}),
         }
       }

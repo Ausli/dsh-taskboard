@@ -76,6 +76,7 @@ export type RoutesWorkspaceFace = WorkspaceFace
 
 /** Options. */
 export interface TaskboardRoutesOptions {
+  externalSync?: import('./external-sync.ts').ExternalSyncService
   store: TaskStore
   workspaces: RoutesWorkspaceFace
   now: () => number
@@ -432,6 +433,11 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
 
       // ---------------------------------------------------------------- GET
       if (req.method === 'GET') {
+        if (pathname === `${ROUTE_PREFIX}/external`) {
+          if (!options.externalSync) { res.writeHead(501); res.end(); return }
+          json(res, { ok: true, value: await options.externalSync.status() })
+          return
+        }
         if (pathname === `${ROUTE_PREFIX}/storage`) {
           if (options.storage === undefined) { res.writeHead(501); res.end(); return }
           json(res, { ok: true, value: await options.storage.status() })
@@ -671,6 +677,29 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
       if (body === null) {
         const f = fail('invalid_input', 'body is not a JSON object')
         json(res, f.res, 400)
+        return
+      }
+
+      if (pathname.startsWith(`${ROUTE_PREFIX}/external`)) {
+        if (!options.externalSync) { res.writeHead(501); res.end(); return }
+        try {
+          let value: unknown = {}
+          if (pathname === `${ROUTE_PREFIX}/external/config`) await options.externalSync.configure(body)
+          else if (pathname === `${ROUTE_PREFIX}/external/test`) await options.externalSync.test()
+          else if (pathname === `${ROUTE_PREFIX}/external/projects`) value = await options.externalSync.discoverProjects(body)
+          else if (pathname === `${ROUTE_PREFIX}/external/account`) value = await options.externalSync.discoverAccount()
+          else if (pathname === `${ROUTE_PREFIX}/external/sync`) value = await options.externalSync.sync()
+          else if (pathname === `${ROUTE_PREFIX}/external/cancel`) options.externalSync.cancel()
+          else if (pathname === `${ROUTE_PREFIX}/external/ignored/clear`) await options.externalSync.clearIgnored()
+          else if (pathname === `${ROUTE_PREFIX}/external/resolve`) {
+            if (typeof body.taskId !== 'string' || typeof body.field !== 'string' || typeof body.acceptExternal !== 'boolean' || typeof body.ifVersion !== 'number') throw new Error('invalid conflict resolution')
+            await options.externalSync.resolve(body.taskId, body.field, body.acceptExternal, body.ifVersion)
+          } else { res.writeHead(404); res.end(); return }
+          json(res, { ok: true, value })
+        } catch (error) {
+          const message = pathname === `${ROUTE_PREFIX}/external/test` ? 'Connection test failed. Check server, token and permissions.' : (error instanceof Error ? error.message : 'External sync failed')
+          json(res, { ok: false, error: { code: 'invalid_input', message } }, 400)
+        }
         return
       }
 
@@ -1329,6 +1358,8 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               }
               replacedTotal = ledger.tasks.length
               ledger.tasks = structuredClone(imported)
+              if (plan.externalSync !== undefined) ledger.externalSync = structuredClone(plan.externalSync)
+              else delete ledger.externalSync
               // Replace is a whole-ledger swap (0.5.0): board settings ride
               // along when the file carries them; merge keeps the live ones.
               if (plan.settings !== undefined) ledger.settings = structuredClone(plan.settings)
@@ -1336,6 +1367,14 @@ export function registerTaskboardRoutes(ctx: Context, options: TaskboardRoutesOp
               return ledger.tasks
             }
             const byId = new Map(ledger.tasks.map(t => [t.id, t]))
+            if (plan.externalSync !== undefined) {
+              ledger.externalSync ??= {}
+              for (const [id, incoming] of Object.entries(plan.externalSync)) {
+                const current = ledger.externalSync[id]
+                ledger.externalSync[id] = current ? { ...incoming, ...current,
+                  links: { ...incoming.links, ...current.links }, ignored: [...new Set([...incoming.ignored, ...current.ignored])] } : structuredClone(incoming)
+              }
+            }
             for (const task of imported) {
               // S6: merging over a task whose execution is live would orphan
               // that run the same way — refuse the overwrite.

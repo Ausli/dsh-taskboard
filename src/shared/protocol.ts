@@ -9,6 +9,8 @@
  * @module dsh-taskboard/shared/protocol
  */
 
+import { normalizeExternalSource, normalizeExternalSyncRecords } from './external.ts'
+
 // ---------------------------------------------------------------------------
 // Status vocabulary
 // ---------------------------------------------------------------------------
@@ -663,6 +665,8 @@ export type TaskModel = {
 
 /** One task on the board. */
 export type TaskRecord = {
+  /** External tracker provenance; local execution state remains independent. */
+  external?: import('./external.ts').ExternalSource
   id: string
   title: string
   description: string
@@ -814,6 +818,8 @@ export function spawnNextCycle(source: TaskRecord, prevExecutionId: string | und
 
 /** The whole durable ledger. */
 export type TaskLedger = {
+  /** Non-secret sync metadata commits atomically with imported tasks. */
+  externalSync?: Record<string, import('./external.ts').ExternalSyncRecord>
   schemaVersion: number
   /** Global monotonic revision; every mutation bumps it. */
   revision: number
@@ -1249,6 +1255,7 @@ export function normalizeExecutionReport(raw: unknown): ExecutionReport {
 
 /** Result classifying every task in an import file against the live ledger. */
 export type ImportPlan = {
+  externalSync?: Record<string, import('./external.ts').ExternalSyncRecord>
   /** Structurally valid tasks whose ids are new (merge adds them). */
   create: TaskRecord[]
   /** Structurally valid tasks whose ids already exist (merge replaces them). */
@@ -1455,6 +1462,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
     const task: TaskRecord = {
       id,
       title: normalizeTitle(strOr(e, 'title', '')),
+      ...(normalizeExternalSource(e.external) !== undefined ? { external: normalizeExternalSource(e.external) } : {}),
       description: strOr(e, 'description', '').trim(),
       prompt: normalizePrompt(strOr(e, 'prompt', '')),
       workspaceId: strOr(e, 'workspaceId', ''),
@@ -1524,7 +1532,8 @@ export function validateLedgerImport(raw: unknown, knownIds: ReadonlySet<string>
     throw new Error(`不支持的 schemaVersion ${String(e.schemaVersion)}（当前支持 ${LEDGER_SCHEMA_VERSION}）`)
   }
   if (!Array.isArray(e.tasks)) throw new Error('导入文件的 tasks 不是数组')
-  const plan: ImportPlan = { create: [], overwrite: [], invalid: [], ...(e.settings !== undefined ? { settings: asBoardSettings(e.settings) } : {}) }
+  const plan: ImportPlan = { create: [], overwrite: [], invalid: [], ...(e.settings !== undefined ? { settings: asBoardSettings(e.settings) } : {}),
+    ...(e.externalSync !== undefined ? { externalSync: normalizeExternalSyncRecords(e.externalSync) } : {}) }
   const seen = new Set<string>()
   for (const entry of e.tasks) {
     const id = typeof (entry as { id?: unknown })?.id === 'string' ? (entry as { id: string }).id : undefined

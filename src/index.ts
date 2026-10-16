@@ -29,6 +29,8 @@ import { registerTaskboardRoutes } from './host/routes.ts'
 import { SchedulerService } from './host/scheduler.ts'
 import { dshHomePath } from './host/sdk.ts'
 import { TaskStore } from './host/store.ts'
+import { ExternalSyncService } from './host/external-sync.ts'
+import { createBuiltinProviders } from './host/external-providers.ts'
 import { TemplateStore } from './host/templates.ts'
 import { ExternalSessionSyncService } from './host/session-sync.ts'
 import { ERR, ToolError, registerTaskboardTools, workspaceFace, type WorkspaceFace } from './host/tools.ts'
@@ -268,10 +270,18 @@ export function apply(ctx: Context): void {
       agentDisposers.push(() => scheduler.dispose())
 
       // /dsh-taskboard routes (the run action reaches the execution service).
+      const externalSync = new ExternalSyncService({
+        file: dshHomePath('dsh-taskboard-external.json'), store,
+        workspaceExists: id => workspaces.get(id) !== undefined,
+        registry: createBuiltinProviders(),
+      })
+      void storeReady.then(() => externalSync.start())
+      agentDisposers.push(() => externalSync.dispose())
       let disposeRoutes: (() => void) | undefined
       agentCtx.inject(['webServer'], (webCtx: Context) => {
         disposeRoutes = registerTaskboardRoutes(webCtx, {
           store,
+          externalSync,
           workspaces: workspaceFace(wsCtx.workspaceRegistry),
           now,
           maxConcurrent,

@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ExecutionService, type AgentsFace, type EventsFace } from '../src/host/execution.ts'
 import { waitFor } from './wait-for.ts'
 import { SchedulerService } from '../src/host/scheduler.ts'
+import { ExternalSyncService } from '../src/host/external-sync.ts'
 import { TaskStore } from '../src/host/store.ts'
 import { normalizeExecution, type TaskRecord } from '../src/shared/protocol.ts'
 
@@ -113,6 +114,44 @@ const workspaces = {
 }
 
 describe('ExecutionService', () => {
+  it.each([
+    { provider: 'zentao', isolation: 'none' }, { provider: 'zentao', isolation: 'worktree' },
+    { provider: 'tapd', isolation: 'none' }, { provider: 'tapd', isolation: 'worktree' },
+  ] as const)('executes an imported $provider card with $isolation isolation', async ({ provider, isolation }) => {
+    const store = await storeWith()
+    await store.mutate('settings-updated', ledger => { ledger.settings = { defaultIsolation: isolation }; return [] })
+    const sync = new ExternalSyncService({ file: join(dir, `external-execution-${provider}-${isolation}.json`), store,
+      workspaceExists: id => id === 'ws-a', provider: () => ({ test: async () => {}, getItems: async () => [{
+        projectId: '1', type: 'bug', id: '100', title: 'Imported bug', description: 'Reproduce and fix', urgency: 'urgent',
+        priority: '1', url: 'https://zentao.test/bug/100', status: 'active', assignedTo: 'alice', closed: false,
+      }] }) })
+    await sync.configure({ provider, baseUrl: `https://${provider}.test`, account: 'alice', authMode: provider === 'tapd' ? 'bearer' : 'password',
+      credentials: provider === 'tapd' ? { accessToken: 'private-token' } : { username: 'alice', password: 'private-token' }, mappings: [{ projectId: '1', workspaceId: 'ws-a' }] })
+    await sync.sync()
+    const id = store.snapshot().tasks[0]!.id
+    await store.mutate('task-moved', ledger => { ledger.tasks[0]!.status = 'todo'; return [ledger.tasks[0]!] })
+    const agents = fakeAgents()
+    const isolatedPath = '/proj/a/.dsh-worktrees/imported'
+    const git = fakeGit({ detect: true, prepare: { path: isolatedPath, branch: 'task/imported', baseCommit: 'base' } })
+    const svc = new ExecutionService({ store, agents, workspaces, events: fakeEvents(), now: Date.now, git })
+    try {
+      const result = await svc.run(id, 'manual')
+      expect(result.ok).toBe(true)
+      expect(agents.created[0]!.cwd).toBe('/proj/a')
+      if (isolation === 'worktree') {
+        expect(git.prepareCalls).toHaveLength(1)
+        expect(JSON.stringify(agents.injects)).toContain(isolatedPath)
+      } else expect(git.prepareCalls).toHaveLength(0)
+      expect(JSON.stringify(agents.followups)).toContain('Reproduce and fix')
+      expect(JSON.stringify(agents.followups)).not.toContain('private-token')
+      agents.idle()
+      await waitFor(() => store.get(id)!.executions[0]!.outcome === 'succeeded')
+      expect(store.get(id)!.external!.item.id).toBe('100')
+      expect(store.get(id)!.external!.provider).toBe(provider)
+      expect(store.get(id)!.status).toBe('in_review')
+      expect(store.get(id)!.executions[0]!.isolation).toBe(isolation)
+    } finally { svc.dispose(); sync.dispose() }
+  })
   it('refuses a scheduled start after the task entered a non-actionable state', async () => {
     const stopped = task({ status: 'done', execution: { mode: 'scheduled', cron: '* * * * *', nextRunAt: 999 } })
     const store = await storeWith(stopped)

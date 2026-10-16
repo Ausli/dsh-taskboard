@@ -34,6 +34,9 @@
     }
   },
   "files": [
+    "docs/external-sync.md",
+    "docs/external-sync.en.md",
+    "docs/external-providers.md",
     "lib/**/*.js",
     "lib/**/*.js.map",
     "src",

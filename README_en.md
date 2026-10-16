@@ -13,6 +13,7 @@ A **task board plugin for DeepSeek Harness**: humans create cards, agents claim 
 - **Git worktree isolation**: each run works on its own worktree + dedicated task branch, one-click merge at acceptance; parallel multi-repo workspaces are mirrored whole (0.6.3); non-git projects fall back automatically
 - **Efficient acceptance**: DoD acceptance checklists (agent checks items off with evidence), structured execution reports (summary / changed files / checks / artifacts / risks), in-board diff viewer
 - **Live board**: SSE real-time refresh, five-column flow, persisted filters & sorting, JSON import/export, task templates
+- **External task sync**: ZenTao product Bugs and TAPD Bugs/Stories/Tasks, one-way imports by assignee, manual/host polling, project mapping, source links and conflict protection; [setup](./docs/external-sync.en.md), [provider extension contract](./docs/external-providers.md).
 
 **Zero configuration**: install and it works — no tokens, no API keys, no extra services or databases.
 

@@ -17,6 +17,7 @@ import type { TaskRecord } from '../../shared/protocol.ts'
 import { fmtTime, isStaleClaim } from './format.ts'
 import { OUTCOME_KEYS, URGENCY_KEYS } from './labels.ts'
 import { useT } from '../i18n/runtime.ts'
+import { externalTypeLabel } from '../external-api.ts'
 
 /** dataTransfer type carrying the dragged task id. */
 export const DRAG_TYPE = 'application/x-dsh-atb-task'
@@ -159,6 +160,7 @@ export function TaskCard({ task, controller, draggable = false, now, onAlert }: 
       }}
     >
       <div className="dsh-atb-card-title">{task.title}</div>
+      {task.external && <small>{task.external.providerName ?? task.external.provider} · {externalTypeLabel(task.external.item.type, t)} #{task.external.item.id}{task.external.conflicts.length > 0 ? ' ⚠' : ''}</small>}
       <div className="dsh-atb-card-meta">
         <span className="dsh-atb-badge">{t(URGENCY_KEYS[task.urgency])}</span>
         {task.blocked && <span className="dsh-atb-badge" data-kind="blocked">{t('shared.blocked')}</span>}

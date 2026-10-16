@@ -2,8 +2,17 @@
 
 ### Unreleased
 
+- **External sync hardening**: atomically store tasks and sync metadata in the ledger, persist failure status, validate unresolved fields, avoid terminal-card conflict churn, and throttle ZenTao requests with fewer detail reads. Restrict packaged docs to user/provider guides and align compact accessible mapping-delete buttons with their inputs.
+
+- **Settings navigation and ZenTao login**: split the settings window into General and External sync using a left sidebar with keyboard navigation and retained drafts. ZenTao now saves a login username/password and obtains an in-memory API token automatically, renewing it once after HTTP 401/403. Usernames may be redisplayed; passwords remain host-only. Token-only ZenTao configurations are no longer supported.
+
+- **Provider registry and TAPD**: declare provider-specific authentication, credentials, settings, work item types, pagination and discovery capabilities. The shared configuration UI is driven by registry descriptors. Add TAPD Bugs/Stories/Tasks, Basic/Bearer authentication, exact multi-assignee matching, cursor scans and project discovery. Require username/password for ZenTao; switching TAPD authentication methods does not duplicate imported work items.
+
 - **固定会话降级修复（#49）**：定时任务绑定的会话归档、占用、配置不匹配、缺失或无法恢复时，创建新会话继续执行；执行记录保存具体原因，会话提示缺少上一轮上下文，宿主输出诊断警告。保留原绑定，避免临时占用时意外改变用户选择。
 - **Bound session fallback (#49)**: scheduled runs start a fresh conversation when the selected session cannot be reused, record the specific reason, warn about missing prior context, and log diagnostics while preserving the explicit binding.
+
+- **ZenTao product Bug integration (#48)**: add a generic provider/sync service, host-only connection configuration, product-to-workspace mapping, manual and periodic imports to Backlog, source metadata, idempotent content updates, conflict resolution and deletion exclusions. Local execution status and evidence remain independent. Initial support targets REST API v1 product Bugs; real deployment compatibility awaits validation.
+
 
 ### 0.8.10
 

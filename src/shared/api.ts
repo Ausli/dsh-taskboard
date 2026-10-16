@@ -328,6 +328,6 @@ export type SummaryResponse = { tasks: TaskSummary[] }
 /** Change frame pushed on every committed ledger mutation. */
 export type ChangeEvent = {
   revision: number
-  kind: 'task-created' | 'task-updated' | 'task-moved' | 'task-deleted' | 'comment-added' | 'execution-recorded' | 'settings-updated' | 'ledger-replaced'
+  kind: 'task-created' | 'task-updated' | 'task-moved' | 'task-deleted' | 'comment-added' | 'execution-recorded' | 'settings-updated' | 'ledger-replaced' | 'external-sync-updated'
   tasks: TaskSummary[]
 }

@@ -7,6 +7,7 @@
  * @module dsh-taskboard/client/board/SettingsModal
  */
 import { useEffect, useState } from 'react'
+import { ExternalSyncPanel } from './ExternalSyncPanel.tsx'
 import type { BoardController } from '../controller.ts'
 import type { CatalogModelItem, CatalogPresetItem } from '../../shared/api.ts'
 import { DEFAULT_COMPLETED_DISPLAY_LIMIT, DEFAULT_DISPATCH_INTERVAL_MS, DEFAULT_ISOLATION, DEFAULT_MAX_CONCURRENT, DEFAULT_QUEUE_MAX_AGE_MINUTES, DEFAULT_SCHEDULE_MISSED_AFTER_MINUTES, MIN_COMPLETED_DISPLAY_LIMIT, MAX_COMPLETED_DISPLAY_LIMIT, completedDisplayLimitOf, defaultPermissionOf, defaultSyncExternalSessionsOf, dispatchIntervalMsOf, maxConcurrentOf, queueMaxAgeMinutesOf, scheduleMissedAfterMinutesOf, type IsolationMode, type PermissionMode } from '../../shared/protocol.ts'
@@ -25,6 +26,7 @@ const isolationOptions = (t: Translate): ReadonlyArray<{ value: IsolationMode; n
  */
 export function SettingsModal({ controller }: { controller: BoardController }) {
   const t = useT()
+  const [section, setSection] = useState<'general' | 'external'>('general')
   const state = controller.getSnapshot()
   const currentIso = state.ledger.settings?.defaultIsolation ?? DEFAULT_ISOLATION
   const currentSync = defaultSyncExternalSessionsOf(state.ledger.settings)
@@ -118,7 +120,21 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
           <button type="button" className="dsh-atb-modal-close" aria-label={t('shared.close')} onClick={() => controller.closeSettings()}>✕</button>
         </div>
 
-        <div className="dsh-atb-modal-body">
+        <div className="dsh-atb-settings-layout">
+          <nav className="dsh-atb-settings-nav" role="tablist" aria-label={t('set.nav.label')} aria-orientation="vertical"
+            onKeyDown={e => {
+              if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return
+              e.preventDefault()
+              const next = e.key === 'Home' ? 'general' : e.key === 'End' ? 'external' : section === 'general' ? 'external' : 'general'
+              setSection(next)
+              e.currentTarget.querySelector<HTMLButtonElement>(`#dsh-atb-settings-tab-${next}`)?.focus()
+            }}>
+            {(['general', 'external'] as const).map(value => <button key={value} id={`dsh-atb-settings-tab-${value}`} type="button" role="tab"
+              aria-selected={section === value} aria-controls={`dsh-atb-settings-panel-${value}`} tabIndex={section === value ? 0 : -1}
+              onClick={() => setSection(value)}>{t(`set.nav.${value}`)}{value === 'general' && dirty ? ' •' : ''}</button>)}
+          </nav>
+          <div className="dsh-atb-settings-content">
+        <div className="dsh-atb-modal-body" id="dsh-atb-settings-panel-general" role="tabpanel" aria-labelledby="dsh-atb-settings-tab-general" hidden={section !== 'general'}>
           <section className="dsh-atb-diag-sec">
             <h4>{t('set.iso.heading')}</h4>
             <div className="dsh-atb-mode-picker">
@@ -362,13 +378,18 @@ export function SettingsModal({ controller }: { controller: BoardController }) {
             </div>
           </section>
         </div>
+        <div className="dsh-atb-modal-body" id="dsh-atb-settings-panel-external" role="tabpanel" aria-labelledby="dsh-atb-settings-tab-external" hidden={section !== 'external'}>
+          <ExternalSyncPanel />
+        </div>
 
-        <div className="dsh-atb-modal-foot">
+        {section === 'general' && <div className="dsh-atb-modal-foot">
           <span className="dsh-atb-modal-hint">{dirty ? t('set.foot.dirty') : t('set.foot.clean')}</span>
           <span className="dsh-atb-modal-footbtns">
             <button type="button" className="dsh-atb-btn" onClick={() => controller.closeSettings()}>{t('shared.cancel')}</button>
             <button type="button" className="dsh-atb-btn" data-primary="true" disabled={!dirty || !scheduleValid || !completedLimitValid} onClick={save}>{t('set.action.save')}</button>
           </span>
+        </div>}
+          </div>
         </div>
       </div>
     </div>
