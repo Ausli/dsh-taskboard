@@ -613,6 +613,8 @@ export type ExecutionRecord = {
   sessionId?: string
   /** Effective configuration of a scheduled session; used only for compatible reuse. */
   sessionReuseKey?: string
+  /** Why a bound scheduled session was replaced with a fresh conversation. */
+  reuseFallbackNote?: string
   /** Trigger: manual button or the host scheduler. */
   trigger: 'manual' | 'scheduled'
   startedAt?: number
@@ -1420,6 +1422,7 @@ export function validateImportedTask(raw: unknown, now: number): { ok: true; tas
         executions.push({
           id: typeof xe.id === 'string' && xe.id.length > 0 ? xe.id : newExecutionId(),
           ...(typeof xe.sessionId === 'string' ? { sessionId: xe.sessionId } : {}),
+          ...(typeof xe.reuseFallbackNote === 'string' ? { reuseFallbackNote: xe.reuseFallbackNote.slice(0, 1000) } : {}),
           trigger,
           ...(typeof xe.startedAt === 'number' ? { startedAt: xe.startedAt } : {}),
           ...(typeof xe.lastActivityAt === 'number' ? { lastActivityAt: xe.lastActivityAt } : {}),

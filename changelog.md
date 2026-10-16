@@ -1,5 +1,10 @@
 # 更新日志 / Changelog
 
+### Unreleased
+
+- **固定会话降级修复（#49）**：定时任务绑定的会话归档、占用、配置不匹配、缺失或无法恢复时，创建新会话继续执行；执行记录保存具体原因，会话提示缺少上一轮上下文，宿主输出诊断警告。保留原绑定，避免临时占用时意外改变用户选择。
+- **Bound session fallback (#49)**: scheduled runs start a fresh conversation when the selected session cannot be reused, record the specific reason, warn about missing prior context, and log diagnostics while preserving the explicit binding.
+
 ### 0.8.10
 
 - **项目分组折叠**：点击项目名称行即可收起或展开该项目在当前状态列中的任务卡片；左侧箭头显示展开状态，项目名称和任务数量始终保留。同一项目在不同状态列中独立折叠，折叠状态保存在当前浏览器中，刷新页面后恢复。主看板与取消／归档／回收站均支持，保留项目分组头的滚动吸顶效果；支持 Tab 聚焦及 Enter／空格切换，操作提示跟随中英文界面。仅影响卡片显示，不改变任务状态或数据。

@@ -51,10 +51,13 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
+/** Why a scheduled conversation could not be continued. */
+export type SessionReuseDegradeReason = 'archived' | 'busy' | 'incompatible' | 'unresumable' | 'unavailable'
+
 /** Narrow agents face (the registry's create, structurally). */
 export interface AgentsFace {
   /** Restore a compatible scheduled session; undefined means it is unavailable. */
-  resumeScheduled?(sessionId: string, options: Parameters<AgentsFace['create']>[0]): Promise<Awaited<ReturnType<AgentsFace['create']>> | undefined>
+  resumeScheduled?(sessionId: string, options: Parameters<AgentsFace['create']>[0], onDegrade?: (reason: SessionReuseDegradeReason) => void): Promise<Awaited<ReturnType<AgentsFace['create']>> | undefined>
   create(options: {
     sessionId: string
     meta?: { cwd?: string; agentPreset?: string }
@@ -603,6 +606,7 @@ export class ExecutionService {
       return { ok: false, error: `preset composition failed: ${message}` }
     }
     let handle: Awaited<ReturnType<AgentsFace['create']>>
+    let reuseFallbackNote: string | undefined
     let sessionReuseKey: string | undefined
     try {
       const model = task.model ?? this.deps.defaultModel?.()
@@ -630,9 +634,13 @@ export class ExecutionService {
       ])
       const selectedSessionId = trigger === 'scheduled' ? task.execution.reuseSessionId : undefined
       if (selectedSessionId !== undefined) {
-        const resumed = await this.deps.agents.resumeScheduled?.(selectedSessionId, createOptions)
-        if (resumed === undefined) throw new Error(`selected session ${selectedSessionId} is unavailable, busy, archived, or incompatible`)
-        handle = resumed
+        let reason: SessionReuseDegradeReason = 'unavailable'
+        const resumed = await this.deps.agents.resumeScheduled?.(selectedSessionId, createOptions, value => { reason = value })
+        if (resumed === undefined) {
+          reuseFallbackNote = `bound session ${selectedSessionId} could not be reused (${reason}); starting a fresh conversation without previous context`
+          await this.patchExecution(executionId, { reuseFallbackNote })
+        }
+        handle = resumed ?? await this.deps.agents.create(createOptions)
       } else {
         // A task can explicitly require a fresh conversation every time. Old
         // ledgers omit sessionReuseMode and deliberately retain #26's legacy
@@ -738,7 +746,7 @@ export class ExecutionService {
     handle.agent.inject({
       id: this.deps.mintMessageId?.() ?? MessageId(`msg-taskboard-${crypto.randomUUID()}`),
       role: 'user' as const,
-      content: [{ type: 'text' as const, text: this.pluginFraming(task, prepared, isolationNote) }],
+      content: [{ type: 'text' as const, text: this.pluginFraming(task, prepared, isolationNote) + (reuseFallbackNote !== undefined ? `\n⚠ ${reuseFallbackNote}` : '') }],
       source: { kind: 'dsh-taskboard' as const },
     })
     handle.agent.followup({

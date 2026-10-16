@@ -1,5 +1,5 @@
 /** Adapt DSH's live-agent and durable-session APIs for recurring executions. */
-import type { AgentsFace } from './execution.ts'
+import type { AgentsFace, SessionReuseDegradeReason } from './execution.ts'
 
 type CreateOptions = Parameters<AgentsFace['create']>[0]
 type Handle = Awaited<ReturnType<AgentsFace['create']>>
@@ -16,6 +16,7 @@ export interface ScheduledSessionDeps {
   }
   persistence(): { stat(id: string): Promise<{ header: Header } | undefined> } | undefined
   isArchived(id: string): boolean
+  onDegrade?(reason: SessionReuseDegradeReason, sessionId: string): void
 }
 
 /**
@@ -25,19 +26,24 @@ export interface ScheduledSessionDeps {
  * trading history continuity for guaranteed execution progress.
  */
 export function scheduledSessionResumer(deps: ScheduledSessionDeps): NonNullable<AgentsFace['resumeScheduled']> {
-  return async (sessionId, options) => {
-    if (deps.isArchived(sessionId)) return undefined
+  return async (sessionId, options, onDegrade) => {
+    const report = (reason: SessionReuseDegradeReason): undefined => {
+      onDegrade?.(reason)
+      deps.onDegrade?.(reason, sessionId)
+      return undefined
+    }
+    if (deps.isArchived(sessionId)) return report('archived')
     const compatible = (header: Header): boolean => header.cwd === options.meta?.cwd
       && header.agentPreset === options.meta?.agentPreset
     const live = deps.agents.get(sessionId)
     if (live !== undefined) {
       // Busy: never queue behind the running conversation — fall back to a
       // fresh session so the scheduled trigger still makes progress.
-      if (live.status !== 'idle') return undefined
-      if (!compatible(live.session.header)) return undefined
+      if (live.status !== 'idle') return report('busy')
+      if (!compatible(live.session.header)) return report('incompatible')
       const model = options.agentOptions
       if (live.options?.provider !== model?.provider || live.options?.model !== model?.model
-        || live.options?.reasoningEffort !== model?.reasoningEffort) return undefined
+        || live.options?.reasoningEffort !== model?.reasoningEffort) return report('incompatible')
       return {
         agent: live,
         borrowed: true,
@@ -52,17 +58,18 @@ export function scheduledSessionResumer(deps: ScheduledSessionDeps): NonNullable
     try {
       const persistence = deps.persistence()
       stored = await persistence?.stat(sessionId)
-    } catch { return undefined }
-    if (stored === undefined || !compatible(stored.header)) return undefined
+    } catch { return report('unresumable') }
+    if (stored === undefined) return report('unavailable')
+    if (!compatible(stored.header)) return report('incompatible')
     // Recheck after the asynchronous metadata read, including a GUI resume.
-    if (deps.isArchived(sessionId)) return undefined
-    if (deps.agents.get(sessionId) !== undefined) return undefined
+    if (deps.isArchived(sessionId)) return report('archived')
+    if (deps.agents.get(sessionId) !== undefined) return report('busy')
     try {
       return await deps.agents.resume({
         resumeSessionId: sessionId,
         ...(options.agentOptions !== undefined ? { agentOptions: options.agentOptions } : {}),
         ...(options.setup !== undefined ? { setup: options.setup } : {}),
       })
-    } catch { return undefined }
+    } catch { return report('unresumable') }
   }
 }

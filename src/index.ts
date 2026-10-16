@@ -195,6 +195,7 @@ export function apply(ctx: Context): void {
               resume: options => agentCtx.agents.resume(options as never) as Promise<never>,
             },
             persistence: () => agentCtx.get('sessionPersistence') as ReturnType<ScheduledSessionDeps['persistence']>,
+            onDegrade: (reason, sessionId) => console.warn(`[dsh-taskboard] scheduled session ${sessionId} could not be reused: ${reason}`),
             isArchived: id => wsCtx.workspaceRegistry.archivedSessionIds.includes(id as never),
           }),
         },

@@ -140,7 +140,7 @@ describe('scheduled session reuse', () => {
     await f.finish(second.sessionId)
   })
 
-  it('uses the selected project session and fails clearly instead of silently replacing it', async () => {
+  it('uses the selected project session and reports a fresh-session fallback after archival', async () => {
     const f = await fixture()
     const existing = await f.create({ sessionId: 'existing-session', meta: { cwd: f.deps.workspaces.get()!.path } })
     await f.store.mutate('task-updated', ledger => {
@@ -154,9 +154,11 @@ describe('scheduled session reuse', () => {
     expect(second.sessionId).toBe('existing-session')
     await f.finish(second.sessionId)
     f.archived.add('existing-session')
-    const failure = await f.svc.run(f.task.id, 'scheduled')
-    expect(failure).toMatchObject({ ok: false, error: expect.stringContaining('selected session existing-session is unavailable') })
-    expect(f.create).toHaveBeenCalledTimes(1)
+    const replacement = await f.run()
+    expect(replacement.sessionId).not.toBe('existing-session')
+    expect(f.store.get(f.task.id)!.executions.at(-1)!.reuseFallbackNote).toContain('archived')
+    expect(f.create).toHaveBeenCalledTimes(2)
+    await f.finish(replacement.sessionId)
   })
 
   it('uses one live conversation for repeated triggers, with fresh prompts and separate execution records', async () => {
@@ -264,6 +266,52 @@ describe('scheduled session reuse', () => {
     expect(second.sessionId).not.toBe(first.sessionId)
     expect(f.create).toHaveBeenCalledTimes(2)
     await f.finish(second.sessionId)
+  })
+
+  it.each(['archived', 'busy', 'incompatible', 'unavailable', 'unresumable', 'missing adapter', 'healthy'] as const)(
+    'executes a bound scheduled session with %s handling', async kind => {
+      const f = await fixture()
+      const first = await f.run()
+      await f.finish(first.sessionId)
+      await f.store.mutate('task-updated', ledger => {
+        ledger.tasks[0]!.execution.reuseSessionId = first.sessionId
+        return [ledger.tasks[0]!]
+      })
+      if (kind === 'archived') f.archived.add(first.sessionId)
+      if (kind === 'busy') Object.assign(f.live.get(first.sessionId)!, { status: 'running' })
+      if (kind === 'incompatible') f.durable.get(first.sessionId)!.meta!.cwd = 'other-project'
+      if (kind === 'unavailable') { f.live.clear(); f.durable.clear() }
+      if (kind === 'unresumable') { f.live.clear(); f.resume.mockRejectedValueOnce(new Error('already owned')) }
+      if (kind === 'missing adapter') delete f.deps.agents.resumeScheduled
+      const second = await f.run()
+      const record = f.store.get(f.task.id)!.executions.at(-1)!
+      if (kind === 'healthy') {
+        expect(second.sessionId).toBe(first.sessionId)
+        expect(record.reuseFallbackNote).toBeUndefined()
+        expect(f.create).toHaveBeenCalledTimes(1)
+      } else {
+        expect(second.sessionId).not.toBe(first.sessionId)
+        expect(record.reuseFallbackNote).toContain(kind === 'missing adapter' ? 'unavailable' : kind)
+        expect(JSON.stringify(f.frames.at(-1))).toContain('without previous context')
+        expect(f.create).toHaveBeenCalledTimes(2)
+        expect(f.store.get(f.task.id)!.execution.reuseSessionId).toBe(first.sessionId)
+      }
+      await f.finish(second.sessionId)
+      expect(f.store.get(f.task.id)!.executions.at(-1)!.outcome).toBe('succeeded')
+    },
+  )
+
+  it('still reports a genuine creation failure after bound-session fallback', async () => {
+    const f = await fixture()
+    await f.store.mutate('task-updated', ledger => {
+      ledger.tasks[0]!.execution.reuseSessionId = 'deleted-session'
+      return [ledger.tasks[0]!]
+    })
+    f.create.mockRejectedValueOnce(new Error('creation unavailable'))
+    expect(await f.svc.run(f.task.id, 'scheduled')).toMatchObject({ ok: false, error: 'creation unavailable' })
+    expect(f.store.get(f.task.id)!.executions.at(-1)).toMatchObject({
+      outcome: 'failed', error: 'creation unavailable', reuseFallbackNote: expect.stringContaining('unavailable'),
+    })
   })
 
   it('cancels a borrowed run without disposing its session or settling it as success', async () => {
